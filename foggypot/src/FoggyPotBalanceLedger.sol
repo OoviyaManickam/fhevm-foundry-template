@@ -50,3 +50,29 @@ contract FoggyPotBalanceLedger is ZamaEthereumConfig, Ownable {
     /// @notice Adds `amount` to `account`'s encrypted balance, registering them as a depositor
     /// on first credit. Grants decrypt permission on the new handle to the ledger, the account,
     /// and both authorized contracts (so PrizePool can keep computing with it later).
+    function credit(address account, euint64 amount) external onlyAuthorized {
+        if (!isDepositor[account]) {
+            isDepositor[account] = true;
+            depositors.push(account);
+        }
+        euint64 newBalance = FHE.add(_balances[account], amount);
+        _grant(account, newBalance);
+        _balances[account] = newBalance;
+    }
+
+    /// @notice Zeroes `account`'s encrypted balance and returns the previous value. Used by
+    /// Vault.requestWithdraw() to snapshot-and-lock the balance being withdrawn.
+    function debitAll(address account) external onlyAuthorized returns (euint64 previousBalance) {
+        previousBalance = _balances[account];
+        euint64 zero = FHE.asEuint64(0);
+        _grant(account, zero);
+        _balances[account] = zero;
+    }
+
+    function _grant(address account, euint64 value) private {
+        FHE.allowThis(value);
+        FHE.allow(value, account);
+        FHE.allow(value, vault);
+        FHE.allow(value, prizePool);
+    }
+}
