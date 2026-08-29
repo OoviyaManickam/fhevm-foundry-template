@@ -70,3 +70,17 @@ contract FoggyPotVault is ZamaEthereumConfig, Ownable {
 
     /// @notice Deposits `amount` of the plaintext test token. The amount is visible on-chain in
     /// this call's calldata and in the transferFrom event, by necessity (see README).
+    function deposit(uint64 amount) external {
+        require(amount > 0, "Vault: zero amount");
+        token.safeTransferFrom(msg.sender, address(this), amount);
+
+        euint64 encryptedAmount = FHE.asEuint64(amount);
+        FHE.allowTransient(encryptedAmount, address(ledger));
+        ledger.credit(msg.sender, encryptedAmount);
+
+        totalDeposits += amount;
+        emit Deposited(msg.sender, amount);
+    }
+
+    /// @notice Step 1 of withdrawal: snapshots and locks the caller's full encrypted balance,
+    /// marking it publicly decryptable so the relayer/KMS can produce a decryption proof for it.
