@@ -63,3 +63,10 @@ contract FoggyPotTest is FhevmTest {
         _fundAndApprove(carol.addr, 1_000 * 10 ** 6);
     }
 
+    function _fundAndApprove(address user, uint256 amount) internal {
+        vm.prank(admin.addr);
+        token.adminMint(user, amount);
+        vm.prank(user);
+        token.approve(address(vault), type(uint256).max);
+    }
+
