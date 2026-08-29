@@ -172,3 +172,76 @@ contract FoggyPotTest is FhevmTest {
         assertEq(prizePool.drawCount(), 1);
     }
 
+    // ---------------------------------------------------------------------
+    // Withdraw
+    // ---------------------------------------------------------------------
+
+    function test_withdrawFullRoundTrip() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        uint256 balanceBeforeWithdraw = token.balanceOf(alice.addr);
+
+        vm.prank(alice.addr);
+        vault.requestWithdraw();
+
+        bytes32 handle = vault.pendingWithdrawHandle(alice.addr);
+        assertTrue(handle != bytes32(0));
+
+        // The real KMS ABI-encodes one `uint256` per handle as a flat tuple (not a dynamic
+        // `uint256[]`) — for one handle that's `abi.encode(uint256)`. buildDecryptionProof lets us
+        // construct a proof matching that exact production encoding, rather than the higher-level
+        // publicDecrypt() mock helper, which (unlike the real relayer) always array-wraps.
+        bytes memory abiEncodedCleartext = abi.encode(uint256(100 * 10 ** 6));
+        bytes memory proof = buildDecryptionProof(handle, abiEncodedCleartext);
+
+        vm.prank(alice.addr);
+        vault.finalizeWithdraw(abiEncodedCleartext, proof);
+
+        assertEq(token.balanceOf(alice.addr), balanceBeforeWithdraw + 100 * 10 ** 6);
+        assertEq(_decryptBalance(alice), 0);
+        assertEq(vault.pendingWithdrawHandle(alice.addr), bytes32(0));
+    }
+
+    /// @dev Regression test: a solo depositor's balance grows via BOTH the Grand tier (always
+    /// guaranteed to find its one winner) and the Minor tier's first pass (guaranteed too, since
+    /// it gets its own fresh, unzeroed snapshot — see runDraw's NatSpec on per-tier snapshots).
+    /// Withdrawing that combined deposit+prize balance must not underflow totalDeposits, which
+    /// only ever tracked raw deposits until PrizePool started also crediting the prize budget.
+    function test_soloDepositorCanWithdrawDepositPlusPrizes() public {
+        vm.prank(alice.addr);
+        vault.deposit(300 * 10 ** 6);
+
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        prizePool.runDraw();
+
+        uint256 expectedBalance = 300 * 10 ** 6 + prizePool.grandPrizeAmount() + prizePool.minorPrizeAmount();
+        assertEq(_decryptBalance(alice), expectedBalance);
+
+        vm.prank(alice.addr);
+        vault.requestWithdraw();
+
+        bytes32 handle = vault.pendingWithdrawHandle(alice.addr);
+        bytes memory abiEncodedCleartext = abi.encode(expectedBalance);
+        bytes memory proof = buildDecryptionProof(handle, abiEncodedCleartext);
+
+        uint256 balanceBefore = token.balanceOf(alice.addr);
+        vm.prank(alice.addr);
+        vault.finalizeWithdraw(abiEncodedCleartext, proof);
+
+        assertEq(token.balanceOf(alice.addr), balanceBefore + expectedBalance);
+    }
+
+    function test_cannotRequestWithdrawTwiceConcurrently() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        vm.prank(alice.addr);
+        vault.requestWithdraw();
+
+        vm.prank(alice.addr);
+        vm.expectRevert(bytes("Vault: withdraw already pending"));
+        vault.requestWithdraw();
+    }
+
