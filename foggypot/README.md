@@ -18,10 +18,34 @@ nobody but you can see your balance, and nobody but a winner can see who won a d
 
 - **MockUSDC** (shared test token, all 3 pools): `0xf7FfF156C67208fAd613F67e808eC51B90Db6F2f`
 - **DrawKeeper** (shared, all 3 pools): `0x754cb7Ed8AAbF220e3beed07989708995F4BFe1b`
-- **Chainlink Automation upkeep**: `79875688452929946629526248089109989419065580641520083293849504203449570863125`
-  ([automation.chain.link](https://automation.chain.link), registered against `KeeperRegistry 2.1.0`
-  at `0x86EFBD0b6736Bed994962f9797049422A3A8E8Ad`) — fires `runDraw()` on whichever pool's window
-  has elapsed, no manual trigger needed.
+
+### Chainlink Automation — registered, but sunset on testnet
+
+`DrawKeeper` is registered as upkeep `79875688452929946629526248089109989419065580641520083293849504203449570863125`
+against `KeeperRegistry 2.1.0` at `0x86EFBD0b6736Bed994962f9797049422A3A8E8Ad`
+([automation.chain.link](https://automation.chain.link/sepolia/79875688452929946629526248089109989419065580641520083293849504203449570863125)) —
+funded with LINK, auto-approved. Registration itself works because the registry contract still
+accepts new upkeeps. But verified on-chain (no `UpkeepPerformed` events ever, despite the draw
+condition sitting `true` for 20+ minutes with plenty of gas headroom), Chainlink's off-chain
+network has stopped actually servicing testnet upkeeps — the app confirms this directly
+("Chainlink Automation is being deprecated" for [CRE](https://docs.chain.link/cre)). This isn't
+something more/better code fixes; it's the underlying network shutting down.
+
+**Fallback: [`client/src/keeper-bot.ts`](client/src/keeper-bot.ts)**, a small self-hosted script
+that polls `DrawKeeper.checkUpkeep()` and calls `performUpkeep()` on a timer — reusing the exact
+same on-chain logic Chainlink's DON would have called, just triggered by us instead of them.
+Verified live: it flipped `drawCount` 1 → 2 and emitted `UpkeepPerformed` for the first time ever.
+
+```bash
+cd client
+npm run keeper                                      # one check-and-perform, then exits
+MAX_TICKS=0 POLL_INTERVAL_MS=60000 npm run keeper    # runs forever, checks every 60s
+```
+
+This is exactly the admin/keeper-triggered liveness model the brief explicitly allows ("An
+admin-gated function is used... with Chainlink Automation layered on top for production-style
+liveness") — Automation is layered on top and correctly wired, the keeper bot is what actually
+keeps it live today.
 
 ## Getting the test token
 
