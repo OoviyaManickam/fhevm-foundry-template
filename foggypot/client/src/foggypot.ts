@@ -124,3 +124,31 @@ async function main() {
   const vault = new Contract(VAULT_ADDRESS, VAULT_ABI, provider);
   const prizePool = new Contract(PRIZEPOOL_ADDRESS, PRIZEPOOL_ABI, provider);
 
+  section("FAUCET");
+  await tryFaucet(token, alice, "Alice");
+  await tryFaucet(token, bob, "Bob");
+  console.log("  Alice mUSDC balance:", fmt(await token.balanceOf(alice.address)));
+  console.log("  Bob   mUSDC balance:", fmt(await token.balanceOf(bob.address)));
+
+  section("DEPOSIT — plaintext amount, no encryption needed here");
+  {
+    const aliceAmount = 100n * 10n ** 6n;
+    const bobAmount = 50n * 10n ** 6n;
+
+    let tx = await token.connect(alice).getFunction("approve")(VAULT_ADDRESS, aliceAmount);
+    await tx.wait();
+    tx = await vault.connect(alice).getFunction("deposit")(aliceAmount);
+    console.log("  Alice deposit tx:", tx.hash);
+    await tx.wait();
+
+    tx = await token.connect(bob).getFunction("approve")(VAULT_ADDRESS, bobAmount);
+    await tx.wait();
+    tx = await vault.connect(bob).getFunction("deposit")(bobAmount);
+    console.log("  Bob deposit tx:  ", tx.hash);
+    await tx.wait();
+  }
+
+  section("BALANCES — after deposit");
+  await decryptBalance(instance, ledger, alice, "Alice");
+  await decryptBalance(instance, ledger, bob, "Bob  ");
+
