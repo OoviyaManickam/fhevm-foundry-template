@@ -101,3 +101,26 @@ async function decryptBalance(instance: FhevmInstance, ledger: Contract, signer:
   return balance;
 }
 
+async function main() {
+  section("SETUP");
+
+  const provider = new JsonRpcProvider(SEPOLIA_RPC_URL);
+  const admin = new Wallet(ADMIN_PRIVATE_KEY, provider);
+  const alice = new Wallet(ALICE_PRIVATE_KEY, provider);
+  const bob = new Wallet(BOB_PRIVATE_KEY, provider);
+
+  console.log("Admin:    ", admin.address);
+  console.log("Alice:    ", alice.address);
+  console.log("Bob:      ", bob.address);
+  console.log("Token:    ", TOKEN_ADDRESS);
+  console.log("Ledger:   ", LEDGER_ADDRESS);
+  console.log("Vault:    ", VAULT_ADDRESS);
+  console.log("PrizePool:", PRIZEPOOL_ADDRESS);
+
+  const instance = await createInstance({ ...SepoliaConfig, network: SEPOLIA_RPC_URL });
+
+  const token = new Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
+  const ledger = new Contract(LEDGER_ADDRESS, LEDGER_ABI, provider);
+  const vault = new Contract(VAULT_ADDRESS, VAULT_ABI, provider);
+  const prizePool = new Contract(PRIZEPOOL_ADDRESS, PRIZEPOOL_ABI, provider);
+
