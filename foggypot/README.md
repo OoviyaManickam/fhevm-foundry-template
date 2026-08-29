@@ -50,3 +50,54 @@ cp .env.example .env   # fill in your keys + the addresses above
 npm run start
 ```
 
+## Architecture
+
+| Contract | Responsibility |
+|---|---|
+| `FoggyPotVault` | Deposit/withdraw entry point. Pulls in the plaintext ERC-20, encrypts the amount, credits the depositor via the Ledger. Owns the two-step withdraw (request + finalize) flow. |
+| `FoggyPotBalanceLedger` | Encrypted per-user deposit weight (`mapping(address => euint64)`). Balance-at-draw-time only — no history, no TWAB. |
+| `FoggyPotPrizePool` | Owns the draw lifecycle. `runDraw()` generates `FHE.randEuint64`, runs a per-tier running-sum comparison loop, credits winners via `FHE.select`. |
+| `FoggyPotReserve` | Holds this pool's admin-funded mock yield, in the same token the pool accepts. No conversion, no cross-pool sharing. |
+| `FoggyPotDrawKeeper` | Chainlink Automation entry point shared by all pools. `checkUpkeep()` finds whichever pool's window has elapsed; `performUpkeep()` calls its `runDraw()`. |
+| FHEVM Executor + ACL | Protocol-level (not written here). Executor logs FHE operations as events; ACL tracks who may decrypt which ciphertext handle. |
+| Coprocessor / Gateway / KMS | Off-chain Zama infrastructure. Performs the homomorphic computations, orchestrates decryption requests, threshold-decrypts only when the ACL permits it. |
+
+Three deployments of the identical contract stack, parameterized only by `drawPeriod`: 5 minutes
+(demo), 24 hours (standard), 30 days (long-horizon). Pools never interact.
+
+### Prize tiers (public config, not encrypted)
+
+| Tier | Share of draw budget | Winners |
+|---|---|---|
+| Grand | 70% | 1 |
+| Minor | 30%, split evenly (10% each) | 3 |
+
+Tier *sizes and winner counts* are plaintext — only the balance comparisons that decide *who* wins
+stay encrypted. Total on-chain cost per draw scales as `(tiers × winners per tier) × depositor
+count`, kept small (1 + 3) for a workable live demo.
+
+### Winner selection, without encrypted division
+
+fhEVM only supports division/modulus by a **plaintext** divisor, never an encrypted one. Each
+pool's `Vault.totalDeposits` is deliberately tracked in plaintext — the deposited/withdrawn amount
+is already momentarily public in the ERC-20 `transferFrom`/`transfer` at each entry/exit boundary
+(see Leakage below), so an aggregate running total leaks nothing beyond what each transaction
+already reveals. That makes `FHE.rem(FHE.randEuint64(), totalDeposits)` — modulus by a *plaintext*
+divisor — exactly the primitive needed to bound the draw, with no encrypted division involved.
+
+`runDraw()` then walks every depositor once per selection pass, accumulating a running sum and
+comparing it against that one random draw via `FHE.lt`; the first participant whose cumulative
+weight exceeds it wins that pass. Grand and Minor tiers each get their **own** snapshot of
+balances-at-draw-time, so a Grand winner is still fully eligible for a Minor prize in the same
+draw; *within* the Minor tier, each pass zeroes out its winner's weight in that tier's snapshot so
+the same person can't be picked twice by the Minor tier alone.
+
+Because a Minor tier's 2nd/3rd pass reuses the *original* `totalDeposits` bound rather than a
+shrunk one (computing the true reduced sum would require knowing who was already excluded — the
+exact secret being protected), a random draw can occasionally land inside an already-excluded
+winner's now-zeroed slice. When that happens the pass simply finds no winner. This is deliberate
+and safe, not a bug: `runDraw()` always pulls the *full* prize budget from Reserve up front (and
+credits it to `Vault.totalDeposits`, since it's real tokens the Vault just received), so a missed
+pass's fixed share isn't lost — it sits as extra real-token backing in the Vault rather than being
+attributed to any one user's encrypted balance.
+
