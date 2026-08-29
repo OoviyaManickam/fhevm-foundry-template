@@ -245,3 +245,30 @@ contract FoggyPotTest is FhevmTest {
         vault.requestWithdraw();
     }
 
+    // ---------------------------------------------------------------------
+    // Chainlink Automation keeper
+    // ---------------------------------------------------------------------
+
+    function test_keeperCheckAndPerformUpkeep() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        (bool needed,) = keeper.checkUpkeep("");
+        assertFalse(needed);
+
+        vm.warp(block.timestamp + DRAW_PERIOD);
+
+        (bool neededNow, bytes memory performData) = keeper.checkUpkeep("");
+        assertTrue(neededNow);
+
+        keeper.performUpkeep(performData);
+        assertEq(prizePool.drawCount(), 1);
+    }
+
+    function test_onlyAdminOrKeeperCanRunDraw() public {
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(alice.addr);
+        vm.expectRevert(bytes("PrizePool: not admin or keeper"));
+        prizePool.runDraw();
+    }
+}
