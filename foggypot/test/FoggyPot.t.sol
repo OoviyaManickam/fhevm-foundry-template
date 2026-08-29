@@ -101,3 +101,74 @@ contract FoggyPotTest is FhevmTest {
         assertEq(ledger.depositorsCount(), 1); // still a single depositor
     }
 
+    // ---------------------------------------------------------------------
+    // Draw
+    // ---------------------------------------------------------------------
+
+    function test_runDrawRevertsBeforeWindowElapses() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        vm.prank(admin.addr);
+        vm.expectRevert(bytes("PrizePool: too early"));
+        prizePool.runDraw();
+    }
+
+    function test_runDrawSkipsWithNoDepositors() public {
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        prizePool.runDraw();
+
+        assertEq(prizePool.drawCount(), 1);
+        assertEq(prizePool.nextDrawTime(), block.timestamp + DRAW_PERIOD);
+    }
+
+    function test_runDrawDistributesPrizesAndConservesTokenBacking() public {
+        vm.prank(alice.addr);
+        vault.deposit(300 * 10 ** 6);
+        vm.prank(bob.addr);
+        vault.deposit(200 * 10 ** 6);
+        vm.prank(carol.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        uint256 reserveBefore = reserve.balance();
+
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        prizePool.runDraw();
+
+        uint256 reserveAfter = reserve.balance();
+        assertEq(reserveBefore - reserveAfter, TOTAL_PRIZE_PER_DRAW);
+
+        uint256 aliceBal = _decryptBalance(alice);
+        uint256 bobBal = _decryptBalance(bob);
+        uint256 carolBal = _decryptBalance(carol);
+        uint256 totalCredited = aliceBal + bobBal + carolBal;
+
+        // The vault must always hold at least as much real backing as all credited encrypted
+        // balances sum to (full collateralization). It can hold MORE: a Minor-tier pass that
+        // finds no winner (see FoggyPotPrizePool's NatSpec) still had its fixed budget pulled
+        // from Reserve up front, so that slice sits as uncredited surplus in the Vault rather
+        // than being lost or left under-collateralized.
+        assertGe(token.balanceOf(address(vault)), totalCredited);
+        assertEq(token.balanceOf(address(vault)), 600 * 10 ** 6 + TOTAL_PRIZE_PER_DRAW);
+
+        // Grand tier is mathematically guaranteed to find a winner (see NatSpec), so at least
+        // grandPrizeAmount is always distributed; at most the full per-draw budget is.
+        uint256 totalWon = totalCredited - 600 * 10 ** 6;
+        assertGe(totalWon, prizePool.grandPrizeAmount());
+        assertLe(totalWon, TOTAL_PRIZE_PER_DRAW);
+    }
+
+    function test_runDrawAdvancesNextDrawTimePastMissedWindows() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        vm.warp(block.timestamp + DRAW_PERIOD * 3 + 1);
+        vm.prank(admin.addr);
+        prizePool.runDraw();
+
+        assertGt(prizePool.nextDrawTime(), block.timestamp);
+        assertEq(prizePool.drawCount(), 1);
+    }
+
