@@ -135,3 +135,40 @@ contract FoggyPotPrizePool is ZamaEthereumConfig, Ownable {
         emit DrawCompleted(drawId, block.timestamp, participants.length);
     }
 
+    function _snapshotBalances(address[] memory participants) private view returns (euint64[] memory balances) {
+        balances = new euint64[](participants.length);
+        for (uint256 i = 0; i < participants.length; i++) {
+            balances[i] = ledger.confidentialBalanceOf(participants[i]);
+        }
+    }
+
+    /// @dev One weighted-random selection pass over `participants`, using `effectiveBalances` as
+    /// each participant's current weight (mutated in place: the pass's winner's weight is zeroed
+    /// so they're excluded from any subsequent pass sharing this same array). Credits `prizeAmount`
+    /// to whichever single participant's cumulative weight first exceeds the pass's random draw.
+    function _runSelectionPass(
+        address[] memory participants,
+        euint64[] memory effectiveBalances,
+        uint64 weightBound,
+        uint64 prizeAmount
+    ) private {
+        euint64 zero = FHE.asEuint64(0);
+        euint64 prize = FHE.asEuint64(prizeAmount);
+        euint64 rand = FHE.rem(FHE.randEuint64(), weightBound);
+        euint64 runningSum = zero;
+        ebool alreadyWon = FHE.asEbool(false);
+
+        for (uint256 i = 0; i < participants.length; i++) {
+            runningSum = FHE.add(runningSum, effectiveBalances[i]);
+            ebool crossed = FHE.lt(rand, runningSum);
+            ebool isThisWinner = FHE.and(crossed, FHE.not(alreadyWon));
+            alreadyWon = FHE.or(alreadyWon, isThisWinner);
+
+            euint64 creditAmount = FHE.select(isThisWinner, prize, zero);
+            FHE.allowTransient(creditAmount, address(ledger));
+            ledger.credit(participants[i], creditAmount);
+
+            effectiveBalances[i] = FHE.select(isThisWinner, zero, effectiveBalances[i]);
+        }
+    }
+}
