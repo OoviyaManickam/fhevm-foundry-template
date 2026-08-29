@@ -44,3 +44,12 @@ contract FoggyPotReserve is Ownable {
     }
 
     /// @notice Called by the PrizePool during runDraw() to move prize tokens into the Vault.
+    function releaseTo(address to, uint256 amount) external onlyPrizePool {
+        token.safeTransfer(to, amount);
+        emit Released(to, amount);
+    }
+
+    function balance() external view returns (uint256) {
+        return token.balanceOf(address(this));
+    }
+}
