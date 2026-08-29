@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/foggypot.ts",
+    "keeper": "tsx src/keeper-bot.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
