@@ -84,3 +84,21 @@ contract FoggyPotVault is ZamaEthereumConfig, Ownable {
 
     /// @notice Step 1 of withdrawal: snapshots and locks the caller's full encrypted balance,
     /// marking it publicly decryptable so the relayer/KMS can produce a decryption proof for it.
+    function requestWithdraw() external {
+        require(pendingWithdrawHandle[msg.sender] == bytes32(0), "Vault: withdraw already pending");
+
+        euint64 balance = ledger.debitAll(msg.sender);
+        FHE.makePubliclyDecryptable(balance);
+
+        bytes32 handle = euint64.unwrap(balance);
+        pendingWithdrawHandle[msg.sender] = handle;
+        emit WithdrawRequested(msg.sender, handle);
+    }
+
+    /// @notice Step 2 of withdrawal: verifies the KMS's decryption proof for the pending handle,
+    /// then transfers the real, now-plaintext amount back to the caller.
+    /// @param abiEncodedCleartexts The exact bytes the relayer SDK's publicDecrypt() returned
+    /// alongside the proof (its `abiEncodedClearValues` field) — passed through verbatim, never
+    /// reconstructed here, since checkSignatures verifies these bytes were the ones actually
+    /// signed by the KMS. The KMS ABI-encodes one `uint256` per handle as a flat tuple (NOT a
+    /// dynamic `uint256[]`); for our single-handle request that's exactly `abi.encode(uint256)`.
