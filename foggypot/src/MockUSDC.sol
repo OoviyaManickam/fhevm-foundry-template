@@ -26,3 +26,9 @@ contract MockUSDC is ERC20, Ownable {
     }
 
     /// @notice Mints FAUCET_AMOUNT to the caller, once per FAUCET_COOLDOWN.
+    function faucet() external {
+        require(block.timestamp >= lastFaucetClaim[msg.sender] + FAUCET_COOLDOWN, "MockUSDC: faucet cooldown");
+        lastFaucetClaim[msg.sender] = block.timestamp;
+        _mint(msg.sender, FAUCET_AMOUNT);
+    }
+}
