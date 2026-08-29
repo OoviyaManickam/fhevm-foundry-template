@@ -131,3 +131,19 @@ admin funds directly (`Reserve.fund(amount)`); `PrizePool.runDraw()` pulls a fix
 every draw. This is an explicit, documented stand-in for what would otherwise be a real
 yield-generating strategy (lending, LP fees, etc.) feeding the Reserve continuously.
 
+## Development
+
+```bash
+forge soldeer install
+forge build
+forge test -vvv                                  # 11 tests against the FHEVM mock
+
+forge script script/DeployFoggyPot.s.sol \
+  --rpc-url <RPC> --account <keystore-name> --broadcast --slow
+
+forge script script/RegisterAutomation.s.sol \
+  --rpc-url <RPC> --account <keystore-name> --broadcast   # needs DRAWKEEPER_ADDRESS env var + LINK
+```
+
+`--slow` is recommended for deployment: the script sends ~30 sequential transactions across 3
+pools, and public RPC nodes can otherwise report success before every one actually lands.
