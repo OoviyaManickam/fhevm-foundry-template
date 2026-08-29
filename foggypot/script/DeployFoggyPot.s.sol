@@ -56,3 +56,23 @@ contract DeployFoggyPot is Script {
         vm.stopBroadcast();
     }
 
+    function _deployPool(address admin, MockUSDC token, uint256 drawPeriod, string memory label)
+        internal
+        returns (PoolAddrs memory p)
+    {
+        p.ledger = new FoggyPotBalanceLedger(admin);
+        p.vault = new FoggyPotVault(admin, token, p.ledger);
+        p.reserve = new FoggyPotReserve(admin, token);
+        p.prizePool = new FoggyPotPrizePool(admin, p.ledger, p.reserve, p.vault, drawPeriod, TOTAL_PRIZE_PER_DRAW);
+
+        p.ledger.setAuthorizedContracts(address(p.vault), address(p.prizePool));
+        p.reserve.setPrizePool(address(p.prizePool));
+        p.vault.setPrizePool(address(p.prizePool));
+
+        console.log(string.concat("--- ", label, " ---"));
+        console.log("  Ledger:   ", address(p.ledger));
+        console.log("  Vault:    ", address(p.vault));
+        console.log("  Reserve:  ", address(p.reserve));
+        console.log("  PrizePool:", address(p.prizePool));
+    }
+
