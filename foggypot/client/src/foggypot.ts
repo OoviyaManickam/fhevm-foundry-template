@@ -62,3 +62,42 @@ async function tryFaucet(token: Contract, signer: Signer, label: string) {
 }
 
 /** Decrypts the caller's own confidentialBalanceOf via a signed userDecrypt request. */
+async function decryptBalance(instance: FhevmInstance, ledger: Contract, signer: Signer, label: string) {
+  const address = await signer.getAddress();
+  const handle = (await ledger.confidentialBalanceOf(address)) as string;
+
+  if (handle === ZeroHash) {
+    console.log(`  ${label} (${address}) balance: 0 (uninitialized)`);
+    return 0n;
+  }
+
+  const keypair = instance.generateKeypair();
+  const startTimestamp = Math.floor(Date.now() / 1000);
+  const durationDays = 1;
+  const contractAddresses = [LEDGER_ADDRESS];
+  const extraData = await instance.getExtraData();
+
+  const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays, extraData);
+  const signature = await signer.signTypedData(
+    eip712.domain,
+    { UserDecryptRequestVerification: [...eip712.types.UserDecryptRequestVerification] },
+    eip712.message,
+  );
+
+  const result = await instance.userDecrypt(
+    [{ handle, contractAddress: LEDGER_ADDRESS }],
+    keypair.privateKey,
+    keypair.publicKey,
+    signature.replace("0x", ""),
+    contractAddresses,
+    address,
+    startTimestamp,
+    durationDays,
+    extraData,
+  );
+
+  const balance = BigInt(result[handle as `0x${string}`] as string | bigint);
+  console.log(`  ${label} (${address}) balance: ${fmt(balance)}`);
+  return balance;
+}
+
