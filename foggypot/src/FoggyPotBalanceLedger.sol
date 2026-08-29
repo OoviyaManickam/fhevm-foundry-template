@@ -27,3 +27,26 @@ contract FoggyPotBalanceLedger is ZamaEthereumConfig, Ownable {
     constructor(address admin) Ownable(admin) {}
 
     /// @notice One-time wiring of the Vault and PrizePool allowed to mutate balances. Admin-only.
+    function setAuthorizedContracts(address vault_, address prizePool_) external onlyOwner {
+        require(vault == address(0) && prizePool == address(0), "Ledger: already set");
+        require(vault_ != address(0) && prizePool_ != address(0), "Ledger: zero address");
+        vault = vault_;
+        prizePool = prizePool_;
+        emit AuthorizedContractsSet(vault_, prizePool_);
+    }
+
+    function confidentialBalanceOf(address account) external view returns (euint64) {
+        return _balances[account];
+    }
+
+    function depositorsCount() external view returns (uint256) {
+        return depositors.length;
+    }
+
+    function allDepositors() external view returns (address[] memory) {
+        return depositors;
+    }
+
+    /// @notice Adds `amount` to `account`'s encrypted balance, registering them as a depositor
+    /// on first credit. Grants decrypt permission on the new handle to the ledger, the account,
+    /// and both authorized contracts (so PrizePool can keep computing with it later).
