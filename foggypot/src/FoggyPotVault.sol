@@ -102,3 +102,22 @@ contract FoggyPotVault is ZamaEthereumConfig, Ownable {
     /// reconstructed here, since checkSignatures verifies these bytes were the ones actually
     /// signed by the KMS. The KMS ABI-encodes one `uint256` per handle as a flat tuple (NOT a
     /// dynamic `uint256[]`); for our single-handle request that's exactly `abi.encode(uint256)`.
+    function finalizeWithdraw(bytes calldata abiEncodedCleartexts, bytes calldata decryptionProof) external {
+        bytes32 handle = pendingWithdrawHandle[msg.sender];
+        require(handle != bytes32(0), "Vault: no pending withdraw");
+
+        bytes32[] memory handles = new bytes32[](1);
+        handles[0] = handle;
+        FHE.checkSignatures(handles, abiEncodedCleartexts, decryptionProof);
+
+        uint64 cleartextAmount = uint64(abi.decode(abiEncodedCleartexts, (uint256)));
+
+        delete pendingWithdrawHandle[msg.sender];
+        totalDeposits -= cleartextAmount;
+
+        if (cleartextAmount > 0) {
+            token.safeTransfer(msg.sender, cleartextAmount);
+        }
+        emit Withdrawn(msg.sender, cleartextAmount);
+    }
+}
