@@ -31,3 +31,22 @@ nobody but you can see your balance, and nobody but a winner can see who won a d
 MockUSDC(0xf7FfF156C67208fAd613F67e808eC51B90Db6F2f).faucet()
 ```
 
+## Full cycle: deposit → draw → claim → withdraw
+
+| Stage | Caller | Function | What happens |
+|---|---|---|---|
+| Deposit | User | `Vault.deposit(uint64 amount)` | Pulls the plaintext ERC-20 in, encrypts the amount, credits your balance in the Ledger |
+| Draw | Admin or Chainlink Automation | `PrizePool.runDraw()` | `FHE.randEuint64` + a running-sum comparison loop over all depositors picks each tier's winner(s), oblivious to everyone but the contract |
+| Claim | Winner, off-chain | EIP-712 `userDecrypt` via the Zama Relayer SDK | The prize was already credited during `runDraw()`. "Claiming" is just privately decrypting your own updated balance — nobody else's screen shows anything |
+| Withdraw | User | `Vault.requestWithdraw()` then `Vault.finalizeWithdraw(...)` | Two-step: your balance is marked publicly decryptable and zeroed, then (after fetching the KMS decryption proof off-chain) the real ERC-20 is sent back |
+
+A full working reference implementation of every step — encrypt, decrypt, deposit, draw, withdraw
+— is in [`client/src/foggypot.ts`](client/src/foggypot.ts). Run it with:
+
+```bash
+cd client
+npm install
+cp .env.example .env   # fill in your keys + the addresses above
+npm run start
+```
+
