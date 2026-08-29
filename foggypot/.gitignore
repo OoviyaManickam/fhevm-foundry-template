@@ -1,0 +1,19 @@
+# Compiler files
+cache/
+out/
+
+# Dependencies
+dependencies/
+
+# Env
+.env
+.env.*
+!.env.example
+
+
+# Docs
+docs/book/
+
+# Misc
+.DS_Store
+foggypot_build_spec.pdf
