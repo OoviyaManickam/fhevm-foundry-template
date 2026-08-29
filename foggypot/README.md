@@ -101,3 +101,33 @@ credits it to `Vault.totalDeposits`, since it's real tokens the Vault just recei
 pass's fixed share isn't lost — it sits as extra real-token backing in the Vault rather than being
 attributed to any one user's encrypted balance.
 
+## Confidentiality & Leakage
+
+**Stays encrypted:** individual deposit sizes, running balances, each draw's random number, every
+win/lose comparison result, and — until a winner personally decrypts their own balance — who won.
+
+**Leaks by necessity:**
+- That a deposit/withdraw transaction happened, and which address sent it (wallet addresses are
+  always public).
+- The exact deposit amount, momentarily, in the plaintext ERC-20 `transferFrom` at the entry
+  boundary.
+- The exact withdrawal amount, at the moment of withdrawal, via the public-decryption callback.
+- The number of participants in a draw, since on-chain loop length is observable via gas usage.
+
+**Deliberate simplifications, stated openly:**
+- Balance-at-draw-time instead of a full time-weighted average (TWAB) — the ring-buffer/binary-
+  search machinery PoolTogether uses to resist flash-deposit gaming is largely redundant here,
+  since an attacker can't *see* balances to time an attack in the first place.
+- Admin-funded Reserve instead of a real yield-generating liquidation auction.
+- Admin/Chainlink-triggered draws instead of a permissionless keeper-incentive auction — there's
+  no free off-chain `isWinner()` check left to build a bot economy around, since winner selection
+  had to move fully on-chain (nobody outside the contract can read encrypted balances to check for
+  themselves).
+
+## Yield mock
+
+There's no real yield source wired up. Each pool's `Reserve` is a plain token-holding contract the
+admin funds directly (`Reserve.fund(amount)`); `PrizePool.runDraw()` pulls a fixed budget from it
+every draw. This is an explicit, documented stand-in for what would otherwise be a real
+yield-generating strategy (lending, LP fees, etc.) feeding the Reserve continuously.
+
