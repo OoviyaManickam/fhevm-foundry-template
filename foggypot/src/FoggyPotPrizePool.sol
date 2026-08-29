@@ -82,3 +82,16 @@ contract FoggyPotPrizePool is ZamaEthereumConfig, Ownable {
     }
 
     /// @notice One-time wiring of the DrawKeeper allowed to trigger draws. Admin-only.
+    function setKeeper(address keeper_) external onlyOwner {
+        require(keeper == address(0), "PrizePool: keeper already set");
+        require(keeper_ != address(0), "PrizePool: zero address");
+        keeper = keeper_;
+        emit KeeperSet(keeper_);
+    }
+
+    function isDrawDue() external view returns (bool) {
+        return block.timestamp >= nextDrawTime;
+    }
+
+    /// @notice Runs one draw: 1 Grand-tier pass + MINOR_WINNER_COUNT Minor-tier passes. Callable
+    /// by the admin or the registered DrawKeeper once the draw window has elapsed.
