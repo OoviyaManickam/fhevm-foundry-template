@@ -169,3 +169,30 @@ async function main() {
   await decryptBalance(instance, ledger, alice, "Alice");
   await decryptBalance(instance, ledger, bob, "Bob  ");
 
+  section("WITHDRAW — Alice withdraws her full balance");
+  {
+    let tx = await vault.connect(alice).getFunction("requestWithdraw")();
+    console.log("  requestWithdraw tx:", tx.hash);
+    await tx.wait();
+
+    const handle = (await vault.pendingWithdrawHandle(alice.address)) as string;
+    console.log("  Pending handle:", handle);
+
+    const { clearValues, abiEncodedClearValues, decryptionProof } = await instance.publicDecrypt([handle]);
+    const cleartextAmount = BigInt(clearValues[handle as `0x${string}`] as string | bigint);
+    console.log("  Decrypted withdraw amount:", fmt(cleartextAmount));
+
+    const balanceBefore = (await token.balanceOf(alice.address)) as bigint;
+    tx = await vault.connect(alice).getFunction("finalizeWithdraw")(abiEncodedClearValues, decryptionProof);
+    console.log("  finalizeWithdraw tx:", tx.hash);
+    await tx.wait();
+    const balanceAfter = (await token.balanceOf(alice.address)) as bigint;
+
+    console.log("  Alice mUSDC balance:", fmt(balanceBefore), "->", fmt(balanceAfter));
+  }
+}
+
+main().catch((err) => {
+  console.error("Fatal:", err);
+  process.exitCode = 1;
+});
