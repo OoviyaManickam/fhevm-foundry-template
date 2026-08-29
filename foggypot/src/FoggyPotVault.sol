@@ -56,3 +56,17 @@ contract FoggyPotVault is ZamaEthereumConfig, Ownable {
     }
 
     /// @notice One-time wiring of the PrizePool allowed to credit the prize budget. Admin-only.
+    function setPrizePool(address prizePool_) external onlyOwner {
+        require(prizePool == address(0), "Vault: already set");
+        require(prizePool_ != address(0), "Vault: zero address");
+        prizePool = prizePool_;
+        emit PrizePoolSet(prizePool_);
+    }
+
+    /// @notice Called by PrizePool once per draw with that draw's full prize budget (see NatSpec).
+    function creditPrizeBudget(uint64 amount) external onlyPrizePool {
+        totalDeposits += amount;
+    }
+
+    /// @notice Deposits `amount` of the plaintext test token. The amount is visible on-chain in
+    /// this call's calldata and in the transferFrom event, by necessity (see README).
