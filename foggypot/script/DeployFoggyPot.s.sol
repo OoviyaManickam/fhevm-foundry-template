@@ -76,3 +76,8 @@ contract DeployFoggyPot is Script {
         console.log("  PrizePool:", address(p.prizePool));
     }
 
+    function _seedReserve(MockUSDC token, FoggyPotReserve reserve) internal {
+        token.approve(address(reserve), RESERVE_SEED_FUNDING);
+        reserve.fund(RESERVE_SEED_FUNDING);
+    }
+}
