@@ -17,3 +17,12 @@ contract MockUSDC is ERC20, Ownable {
 
     /// @notice Unrestricted-amount mint, deployer-only. Used to seed Reserve balances and tests
     /// without waiting out the faucet cooldown; regular users always go through faucet().
+    function adminMint(address to, uint256 amount) external onlyOwner {
+        _mint(to, amount);
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
+    /// @notice Mints FAUCET_AMOUNT to the caller, once per FAUCET_COOLDOWN.
