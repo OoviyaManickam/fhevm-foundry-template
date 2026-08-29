@@ -70,3 +70,10 @@ contract FoggyPotTest is FhevmTest {
         token.approve(address(vault), type(uint256).max);
     }
 
+    function _decryptBalance(Account memory user) internal returns (uint256) {
+        bytes32 handle = euint64.unwrap(ledger.confidentialBalanceOf(user.addr));
+        if (handle == bytes32(0)) return 0;
+        bytes memory sig = signUserDecrypt(user.key, address(ledger));
+        return userDecrypt(handle, user.addr, address(ledger), sig);
+    }
+
