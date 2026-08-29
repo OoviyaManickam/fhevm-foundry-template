@@ -95,3 +95,43 @@ contract FoggyPotPrizePool is ZamaEthereumConfig, Ownable {
 
     /// @notice Runs one draw: 1 Grand-tier pass + MINOR_WINNER_COUNT Minor-tier passes. Callable
     /// by the admin or the registered DrawKeeper once the draw window has elapsed.
+    function runDraw() external onlyAdminOrKeeper {
+        require(block.timestamp >= nextDrawTime, "PrizePool: too early");
+
+        uint256 drawId = drawCount++;
+        while (nextDrawTime <= block.timestamp) {
+            nextDrawTime += drawPeriod;
+        }
+
+        address[] memory participants = ledger.allDepositors();
+        uint64 totalDeposits = vault.totalDeposits();
+
+        if (participants.length == 0 || totalDeposits == 0) {
+            emit DrawSkipped(drawId, "no depositors");
+            return;
+        }
+
+        uint256 totalPrizeBudget = uint256(grandPrizeAmount) + uint256(minorPrizeAmount) * MINOR_WINNER_COUNT;
+        if (reserve.balance() < totalPrizeBudget) {
+            emit DrawSkipped(drawId, "reserve underfunded");
+            return;
+        }
+        reserve.releaseTo(address(vault), totalPrizeBudget);
+        vault.creditPrizeBudget(uint64(totalPrizeBudget));
+
+        // Grand and Minor tiers each get their own snapshot of balances-at-draw-time: exclusion
+        // (zeroing a pass's winner's weight) is scoped to *within* a tier, per Section 6 of the
+        // spec — a Grand-tier winner remains fully eligible for Minor-tier prizes in the same draw.
+        euint64[] memory grandBalances = _snapshotBalances(participants);
+        _runSelectionPass(participants, grandBalances, totalDeposits, grandPrizeAmount);
+
+        // Minor tier — MINOR_WINNER_COUNT passes, excluding each pass's winner from later passes
+        // within this same tier by zeroing their effective weight.
+        euint64[] memory minorBalances = _snapshotBalances(participants);
+        for (uint256 pass = 0; pass < MINOR_WINNER_COUNT; pass++) {
+            _runSelectionPass(participants, minorBalances, totalDeposits, minorPrizeAmount);
+        }
+
+        emit DrawCompleted(drawId, block.timestamp, participants.length);
+    }
+
