@@ -77,3 +77,27 @@ contract FoggyPotTest is FhevmTest {
         return userDecrypt(handle, user.addr, address(ledger), sig);
     }
 
+    // ---------------------------------------------------------------------
+    // Deposit
+    // ---------------------------------------------------------------------
+
+    function test_depositCreditsEncryptedBalance() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        assertEq(_decryptBalance(alice), 100 * 10 ** 6);
+        assertEq(vault.totalDeposits(), 100 * 10 ** 6);
+        assertEq(token.balanceOf(address(vault)), 100 * 10 ** 6);
+        assertEq(ledger.depositorsCount(), 1);
+    }
+
+    function test_multipleDepositsAccumulate() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+        vm.prank(alice.addr);
+        vault.deposit(50 * 10 ** 6);
+
+        assertEq(_decryptBalance(alice), 150 * 10 ** 6);
+        assertEq(ledger.depositorsCount(), 1); // still a single depositor
+    }
+
