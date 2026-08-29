@@ -30,3 +30,17 @@ contract FoggyPotReserve is Ownable {
     }
 
     /// @notice One-time wiring of the PrizePool allowed to pull funds. Admin-only.
+    function setPrizePool(address prizePool_) external onlyOwner {
+        require(prizePool == address(0), "Reserve: already set");
+        require(prizePool_ != address(0), "Reserve: zero address");
+        prizePool = prizePool_;
+        emit PrizePoolSet(prizePool_);
+    }
+
+    /// @notice Admin funds this pool's mock yield reserve. Requires prior ERC20 approval.
+    function fund(uint256 amount) external onlyOwner {
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        emit Funded(msg.sender, amount);
+    }
+
+    /// @notice Called by the PrizePool during runDraw() to move prize tokens into the Vault.
