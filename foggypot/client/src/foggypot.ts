@@ -18,6 +18,8 @@ const VAULT_ABI = [
   "function totalDeposits() view returns (uint64)",
 ] as const;
 
+const SEPOLIA_CHAIN_ID = 11155111n;
+
 const PRIZEPOOL_ABI = [
   "function runDraw()",
   "function isDrawDue() view returns (bool)",
@@ -105,6 +107,15 @@ async function main() {
   section("SETUP");
 
   const provider = new JsonRpcProvider(SEPOLIA_RPC_URL);
+
+  const network = await provider.getNetwork();
+  if (network.chainId !== SEPOLIA_CHAIN_ID) {
+    throw new Error(
+      `Network mismatch: SEPOLIA_RPC_URL points at chain ${network.chainId}, expected Sepolia (${SEPOLIA_CHAIN_ID}). ` +
+        `FoggyPot is only deployed on Sepolia — check your .env.`,
+    );
+  }
+
   const admin = new Wallet(ADMIN_PRIVATE_KEY, provider);
   const alice = new Wallet(ALICE_PRIVATE_KEY, provider);
   const bob = new Wallet(BOB_PRIVATE_KEY, provider);
