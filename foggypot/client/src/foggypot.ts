@@ -16,6 +16,7 @@ const VAULT_ABI = [
   "function finalizeWithdraw(bytes abiEncodedCleartexts, bytes decryptionProof)",
   "function pendingWithdrawHandle(address) view returns (bytes32)",
   "function totalDeposits() view returns (uint64)",
+  "function token() view returns (address)",
 ] as const;
 
 const SEPOLIA_CHAIN_ID = 11155111n;
@@ -134,6 +135,18 @@ async function main() {
   const ledger = new Contract(LEDGER_ADDRESS, LEDGER_ABI, provider);
   const vault = new Contract(VAULT_ADDRESS, VAULT_ABI, provider);
   const prizePool = new Contract(PRIZEPOOL_ADDRESS, PRIZEPOOL_ABI, provider);
+
+  // Unsupported/misconfigured token guard: each Vault is hardwired to exactly one immutable
+  // ERC-20 at deploy time (see FoggyPotVault — "single confidential token per pool" by design).
+  // If .env's TOKEN_ADDRESS doesn't match what this Vault actually accepts, fail loudly now
+  // rather than after a deposit approval against the wrong contract.
+  const vaultToken = (await vault.token()) as string;
+  if (vaultToken.toLowerCase() !== TOKEN_ADDRESS.toLowerCase()) {
+    throw new Error(
+      `Unsupported token: TOKEN_ADDRESS (${TOKEN_ADDRESS}) does not match what Vault ${VAULT_ADDRESS} ` +
+        `actually accepts (${vaultToken}). Check your .env addresses are all from the same deployment.`,
+    );
+  }
 
   section("FAUCET");
   await tryFaucet(token, alice, "Alice");
