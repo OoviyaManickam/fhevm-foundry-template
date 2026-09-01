@@ -46,8 +46,18 @@ async function tick(keeper: Contract, admin: Wallet, tickNumber: number) {
   console.log(`  confirmed in block ${receipt.blockNumber}`);
 }
 
+const SEPOLIA_CHAIN_ID = 11155111n;
+
 async function main() {
   const provider = new JsonRpcProvider(SEPOLIA_RPC_URL);
+
+  const network = await provider.getNetwork();
+  if (network.chainId !== SEPOLIA_CHAIN_ID) {
+    throw new Error(
+      `Network mismatch: SEPOLIA_RPC_URL points at chain ${network.chainId}, expected Sepolia (${SEPOLIA_CHAIN_ID}).`,
+    );
+  }
+
   const admin = new Wallet(ADMIN_PRIVATE_KEY, provider);
   const keeper = new Contract(DRAWKEEPER_ADDRESS, ABI, provider);
 
