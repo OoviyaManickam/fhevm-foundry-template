@@ -210,6 +210,12 @@ contract FoggyPotTest is FhevmTest {
         assertLe(totalWon, TOTAL_PRIZE_PER_DRAW);
     }
 
+    function test_fundSyncsRealAndEncryptedReserveBalance() public {
+        // setUp() already funded the reserve once; confirm the encrypted mirror matches.
+        assertEq(_decryptReserveBalance(), reserve.balance());
+        assertEq(_decryptReserveBalance(), RESERVE_FUNDING);
+    }
+
     function test_runDrawAdvancesNextDrawTimePastMissedWindows() public {
         vm.prank(alice.addr);
         vault.deposit(100 * 10 ** 6);
