@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {FHE, euint64} from "@fhevm/solidity/lib/FHE.sol";
+import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -10,11 +12,13 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /// No conversion, no cross-pool sharing. Yield is entirely simulated: the admin transfers real
 /// tokens in via fund(), and the associated PrizePool pulls plaintext amounts out at draw time
 /// to back the encrypted prizes it credits.
-contract FoggyPotReserve is Ownable {
+contract FoggyPotReserve is ZamaEthereumConfig, Ownable {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable token;
     address public prizePool;
+
+    euint64 private _confidentialBalance;
 
     event Funded(address indexed from, uint256 amount);
     event Released(address indexed to, uint256 amount);
@@ -37,9 +41,16 @@ contract FoggyPotReserve is Ownable {
         emit PrizePoolSet(prizePool_);
     }
 
-    /// @notice Admin funds this pool's mock yield reserve. Requires prior ERC20 approval.
+    /// @notice Admin funds this pool's mock yield reserve. Requires prior ERC20 approval. Credits
+    /// the real ERC-20 balance and the encrypted mirror by the same (already-public, since this
+    /// is a plaintext ERC20 transfer) amount.
     function fund(uint256 amount) external onlyOwner {
         token.safeTransferFrom(msg.sender, address(this), amount);
+
+        euint64 newBalance = FHE.add(_confidentialBalance, FHE.asEuint64(uint64(amount)));
+        _grant(newBalance);
+        _confidentialBalance = newBalance;
+
         emit Funded(msg.sender, amount);
     }
 
@@ -49,7 +60,16 @@ contract FoggyPotReserve is Ownable {
         emit Released(to, amount);
     }
 
+    function confidentialBalance() external view returns (euint64) {
+        return _confidentialBalance;
+    }
+
     function balance() external view returns (uint256) {
         return token.balanceOf(address(this));
+    }
+
+    function _grant(euint64 value) private {
+        FHE.allowThis(value);
+        FHE.allow(value, owner());
     }
 }
