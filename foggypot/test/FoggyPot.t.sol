@@ -216,6 +216,34 @@ contract FoggyPotTest is FhevmTest {
         assertEq(_decryptReserveBalance(), RESERVE_FUNDING);
     }
 
+    /// @dev The core "confidential transfer" property: Reserve's ENCRYPTED balance (not just its
+    /// real ERC-20 balance) decreases by exactly the per-draw budget, proving prize distribution
+    /// is a genuine encrypted-to-encrypted transfer (FHE.sub from Reserve, FHE.select-gated
+    /// FHE.add to a winner) rather than a credit conjured with no corresponding debit anywhere.
+    function test_runDrawDebitsReserveConfidentialBalance() public {
+        vm.prank(alice.addr);
+        vault.deposit(300 * 10 ** 6);
+        vm.prank(bob.addr);
+        vault.deposit(200 * 10 ** 6);
+        vm.prank(carol.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        uint256 encryptedReserveBefore = _decryptReserveBalance();
+        assertEq(encryptedReserveBefore, RESERVE_FUNDING);
+
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        prizePool.runDraw();
+
+        uint256 encryptedReserveAfter = _decryptReserveBalance();
+
+        // Debited by exactly the full per-draw budget: one unconditional FHE.sub per pass (Grand
+        // + 3x Minor), same total regardless of which passes actually found a winner.
+        assertEq(encryptedReserveBefore - encryptedReserveAfter, TOTAL_PRIZE_PER_DRAW);
+        // The encrypted mirror and the real ERC-20 balance move in lockstep.
+        assertEq(encryptedReserveAfter, reserve.balance());
+    }
+
     function test_runDrawAdvancesNextDrawTimePastMissedWindows() public {
         vm.prank(alice.addr);
         vault.deposit(100 * 10 ** 6);
