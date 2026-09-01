@@ -8,10 +8,21 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title FoggyPotReserve
-/// @notice Holds this pool's admin-funded mock yield, in the same token the pool accepts.
-/// No conversion, no cross-pool sharing. Yield is entirely simulated: the admin transfers real
-/// tokens in via fund(), and the associated PrizePool pulls plaintext amounts out at draw time
-/// to back the encrypted prizes it credits.
+/// @notice Holds this pool's admin-funded mock yield, in the same token the pool accepts. No
+/// conversion, no cross-pool sharing. Yield is entirely simulated: the admin transfers real
+/// tokens in via fund(), which credits BOTH the real ERC-20 balance and a mirrored encrypted
+/// balance (`confidentialBalance`) tracking the same figure.
+///
+/// That encrypted mirror is what makes prize distribution a genuine confidential transfer: each
+/// draw pass calls debitConfidential() here (an `FHE.sub` on this contract's own encrypted
+/// balance) paired with an oblivious `FHE.select`-gated credit to whichever participant's weight
+/// the random draw lands on (see FoggyPotPrizePool._runSelectionPass). A known amount leaves an
+/// encrypted balance, an encrypted amount (0 or that same amount) arrives at exactly one
+/// participant's — a transfer between two euint64 balances, not a credit conjured from nowhere.
+///
+/// The real ERC-20 movement (releaseTo, unchanged) still separately backs actual withdrawals;
+/// the encrypted mirror is bookkeeping for the confidentiality property, not a second source of
+/// truth for solvency — the real balance remains authoritative (see runDraw's underfunded check).
 contract FoggyPotReserve is ZamaEthereumConfig, Ownable {
     using SafeERC20 for IERC20;
 
