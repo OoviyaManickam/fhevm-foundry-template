@@ -10,6 +10,11 @@ const TOKEN_ABI = [
 
 const LEDGER_ABI = ["function confidentialBalanceOf(address account) view returns (bytes32)"] as const;
 
+const RESERVE_ABI = [
+  "function confidentialBalance() view returns (bytes32)",
+  "function balance() view returns (uint256)",
+] as const;
+
 const VAULT_ABI = [
   "function deposit(uint64 amount)",
   "function requestWithdraw()",
@@ -36,6 +41,7 @@ const BOB_PRIVATE_KEY = requireEnv("BOB_PRIVATE_KEY");
 const SEPOLIA_RPC_URL = requireEnv("SEPOLIA_RPC_URL");
 const TOKEN_ADDRESS = requireEnv("TOKEN_ADDRESS");
 const LEDGER_ADDRESS = requireEnv("LEDGER_ADDRESS");
+const RESERVE_ADDRESS = requireEnv("RESERVE_ADDRESS");
 const VAULT_ADDRESS = requireEnv("VAULT_ADDRESS");
 const PRIZEPOOL_ADDRESS = requireEnv("PRIZEPOOL_ADDRESS");
 
@@ -64,20 +70,20 @@ async function tryFaucet(token: Contract, signer: Signer, label: string) {
   }
 }
 
-/** Decrypts the caller's own confidentialBalanceOf via a signed userDecrypt request. */
-async function decryptBalance(instance: FhevmInstance, ledger: Contract, signer: Signer, label: string) {
+/** EIP-712 userDecrypt for any single euint64 handle, signed by `signer`. */
+async function decryptEuint64(
+  instance: FhevmInstance,
+  handle: string,
+  contractAddress: string,
+  signer: Signer,
+): Promise<bigint> {
+  if (handle === ZeroHash) return 0n;
+
   const address = await signer.getAddress();
-  const handle = (await ledger.confidentialBalanceOf(address)) as string;
-
-  if (handle === ZeroHash) {
-    console.log(`  ${label} (${address}) balance: 0 (uninitialized)`);
-    return 0n;
-  }
-
   const keypair = instance.generateKeypair();
   const startTimestamp = Math.floor(Date.now() / 1000);
   const durationDays = 1;
-  const contractAddresses = [LEDGER_ADDRESS];
+  const contractAddresses = [contractAddress];
   const extraData = await instance.getExtraData();
 
   const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays, extraData);
@@ -88,7 +94,7 @@ async function decryptBalance(instance: FhevmInstance, ledger: Contract, signer:
   );
 
   const result = await instance.userDecrypt(
-    [{ handle, contractAddress: LEDGER_ADDRESS }],
+    [{ handle, contractAddress }],
     keypair.privateKey,
     keypair.publicKey,
     signature.replace("0x", ""),
@@ -99,8 +105,23 @@ async function decryptBalance(instance: FhevmInstance, ledger: Contract, signer:
     extraData,
   );
 
-  const balance = BigInt(result[handle as `0x${string}`] as string | bigint);
-  console.log(`  ${label} (${address}) balance: ${fmt(balance)}`);
+  return BigInt(result[handle as `0x${string}`] as string | bigint);
+}
+
+/** Decrypts the caller's own confidentialBalanceOf via a signed userDecrypt request. */
+async function decryptBalance(instance: FhevmInstance, ledger: Contract, signer: Signer, label: string) {
+  const address = await signer.getAddress();
+  const handle = (await ledger.confidentialBalanceOf(address)) as string;
+  const balance = await decryptEuint64(instance, handle, LEDGER_ADDRESS, signer);
+  console.log(`  ${label} (${address}) balance: ${handle === ZeroHash ? "0 (uninitialized)" : fmt(balance)}`);
+  return balance;
+}
+
+/** Decrypts Reserve's encrypted mirror balance (only its owner/admin has ACL grant on it). */
+async function decryptReserveBalance(instance: FhevmInstance, reserve: Contract, admin: Signer) {
+  const handle = (await reserve.confidentialBalance()) as string;
+  const balance = await decryptEuint64(instance, handle, RESERVE_ADDRESS, admin);
+  console.log(`  Reserve confidential balance: ${handle === ZeroHash ? "0 (uninitialized)" : fmt(balance)}`);
   return balance;
 }
 
@@ -133,6 +154,7 @@ async function main() {
 
   const token = new Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
   const ledger = new Contract(LEDGER_ADDRESS, LEDGER_ABI, provider);
+  const reserve = new Contract(RESERVE_ADDRESS, RESERVE_ABI, provider);
   const vault = new Contract(VAULT_ADDRESS, VAULT_ABI, provider);
   const prizePool = new Contract(PRIZEPOOL_ADDRESS, PRIZEPOOL_ABI, provider);
 
