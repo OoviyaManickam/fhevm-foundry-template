@@ -10,8 +10,11 @@ import {FoggyPotVault} from "./FoggyPotVault.sol";
 
 /// @title FoggyPotPrizePool
 /// @notice Owns the draw lifecycle for one pool. runDraw() generates FHE.randEuint64(), runs a
-/// per-tier running-sum + FHE.lt selection loop over all depositors, and credits winners via
-/// FHE.select — entirely on-chain, entirely oblivious to who won except the winner themselves.
+/// per-tier running-sum + FHE.lt selection loop over all depositors, and distributes each tier's
+/// prize as a genuine confidential transfer — an `FHE.sub` debit from Reserve's own encrypted
+/// balance (see FoggyPotReserve) paired with an `FHE.select`-gated credit to whichever
+/// participant the random draw lands on — entirely on-chain, entirely oblivious to who won
+/// except the winner themselves.
 ///
 /// Tiers are PUBLIC, PLAINTEXT config (sizes, winner counts) — only the balance comparisons that
 /// decide who wins are encrypted. Grand tier picks 1 winner (70% of the draw's prize budget);
@@ -144,8 +147,10 @@ contract FoggyPotPrizePool is ZamaEthereumConfig, Ownable {
 
     /// @dev One weighted-random selection pass over `participants`, using `effectiveBalances` as
     /// each participant's current weight (mutated in place: the pass's winner's weight is zeroed
-    /// so they're excluded from any subsequent pass sharing this same array). Credits `prizeAmount`
-    /// to whichever single participant's cumulative weight first exceeds the pass's random draw.
+    /// so they're excluded from any subsequent pass sharing this same array). Distributes
+    /// `prizeAmount` as a genuine confidential transfer: an unconditional `FHE.sub` debit from
+    /// Reserve's encrypted balance, paired with an oblivious `FHE.select`-gated credit to
+    /// whichever single participant's cumulative weight first exceeds the pass's random draw.
     function _runSelectionPass(
         address[] memory participants,
         euint64[] memory effectiveBalances,
