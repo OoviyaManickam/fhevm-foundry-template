@@ -152,6 +152,8 @@ contract FoggyPotPrizePool is ZamaEthereumConfig, Ownable {
         uint64 weightBound,
         uint64 prizeAmount
     ) private {
+        reserve.debitConfidential(prizeAmount);
+
         euint64 zero = FHE.asEuint64(0);
         euint64 prize = FHE.asEuint64(prizeAmount);
         euint64 rand = FHE.rem(FHE.randEuint64(), weightBound);
