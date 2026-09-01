@@ -317,6 +317,22 @@ contract FoggyPotTest is FhevmTest {
         assertEq(token.balanceOf(alice.addr), balanceBefore + expectedBalance);
     }
 
+    /// @dev Winner-only decryption, enforced: Bob has no ACL grant on Alice's balance handle, so
+    /// even a validly-signed decrypt request from Bob for Alice's handle must revert. Decryption
+    /// is per-account, not "anyone who knows the handle."
+    function test_onlyAccountOwnerCanDecryptTheirBalance() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        bytes32 aliceHandle = euint64.unwrap(ledger.confidentialBalanceOf(alice.addr));
+        bytes memory bobSignature = signUserDecrypt(bob.key, address(ledger));
+
+        vm.expectRevert(
+            abi.encodeWithSignature("UserNotAuthorizedForDecrypt(bytes32,address)", aliceHandle, bob.addr)
+        );
+        this._userDecryptExternal(aliceHandle, bob.addr, address(ledger), bobSignature);
+    }
+
     function test_cannotRequestWithdrawTwiceConcurrently() public {
         vm.prank(alice.addr);
         vault.deposit(100 * 10 ** 6);
