@@ -54,10 +54,22 @@ contract FoggyPotReserve is ZamaEthereumConfig, Ownable {
         emit Funded(msg.sender, amount);
     }
 
-    /// @notice Called by the PrizePool during runDraw() to move prize tokens into the Vault.
+    /// @notice Called by the PrizePool during runDraw() to move real prize tokens into the Vault.
     function releaseTo(address to, uint256 amount) external onlyPrizePool {
         token.safeTransfer(to, amount);
         emit Released(to, amount);
+    }
+
+    /// @notice Called by the PrizePool once per selection pass: debits `amount` from the
+    /// encrypted mirror. `amount` is plaintext because tier prize sizes are public config (only
+    /// who wins is secret) — see FoggyPotPrizePool's NatSpec. Unconditional, not FHE.select-gated:
+    /// the fixed per-pass budget already always leaves Reserve's real balance too (via releaseTo,
+    /// called once per draw for the whole budget), regardless of whether that particular pass
+    /// finds a winner.
+    function debitConfidential(uint64 amount) external onlyPrizePool returns (euint64 newBalance) {
+        newBalance = FHE.sub(_confidentialBalance, FHE.asEuint64(amount));
+        _grant(newBalance);
+        _confidentialBalance = newBalance;
     }
 
     function confidentialBalance() external view returns (euint64) {
