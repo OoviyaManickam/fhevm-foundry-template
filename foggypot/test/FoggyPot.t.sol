@@ -119,6 +119,38 @@ contract FoggyPotTest is FhevmTest {
         assertEq(ledger.depositorsCount(), 1); // still a single depositor
     }
 
+    function test_depositRevertsWithoutApproval() public {
+        address dave = makeAddr("dave");
+        vm.prank(admin.addr);
+        token.adminMint(dave, 100 * 10 ** 6);
+        // dave never approved the vault.
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(vault), 0, 100 * 10 ** 6)
+        );
+        vm.prank(dave);
+        vault.deposit(100 * 10 ** 6);
+    }
+
+    function test_depositRevertsWithInsufficientBalance() public {
+        address dave = makeAddr("dave");
+        vm.prank(dave);
+        token.approve(address(vault), type(uint256).max);
+        // dave approved but was never minted any tokens.
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, dave, 0, 100 * 10 ** 6)
+        );
+        vm.prank(dave);
+        vault.deposit(100 * 10 ** 6);
+    }
+
+    function test_depositRevertsOnZeroAmount() public {
+        vm.expectRevert(bytes("Vault: zero amount"));
+        vm.prank(alice.addr);
+        vault.deposit(0);
+    }
+
     // ---------------------------------------------------------------------
     // Draw
     // ---------------------------------------------------------------------
