@@ -198,7 +198,10 @@ async function main() {
   await decryptBalance(instance, ledger, alice, "Alice");
   await decryptBalance(instance, ledger, bob, "Bob  ");
 
-  section("DRAW");
+  section("RESERVE — confidential balance before draw (proves the transfer has a real sender)");
+  await decryptReserveBalance(instance, reserve, admin);
+
+  section("DRAW — prize distribution via confidential transfer (Reserve -> winner)");
   const isDrawDue = (await prizePool.isDrawDue()) as boolean;
   if (isDrawDue) {
     const tx = await prizePool.connect(admin).getFunction("runDraw")();
@@ -210,6 +213,9 @@ async function main() {
     const secondsLeft = nextDrawTime - Math.floor(Date.now() / 1000);
     console.log(`  Draw window not open yet — ${secondsLeft}s remaining. Re-run this script after that.`);
   }
+
+  section("RESERVE — confidential balance after draw (should be exactly TOTAL_PRIZE_PER_DRAW lower)");
+  await decryptReserveBalance(instance, reserve, admin);
 
   section("BALANCES — after draw (winners will show a higher balance)");
   await decryptBalance(instance, ledger, alice, "Alice");
