@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {FhevmTest} from "forge-fhevm/FhevmTest.sol";
 import {euint64} from "encrypted-types/EncryptedTypes.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
 import {FoggyPotBalanceLedger} from "../src/FoggyPotBalanceLedger.sol";
 import {FoggyPotVault} from "../src/FoggyPotVault.sol";
@@ -75,6 +76,23 @@ contract FoggyPotTest is FhevmTest {
         if (handle == bytes32(0)) return 0;
         bytes memory sig = signUserDecrypt(user.key, address(ledger));
         return userDecrypt(handle, user.addr, address(ledger), sig);
+    }
+
+    /// @dev userDecrypt() is internal (inherited from FhevmTest), so calling it directly creates
+    /// no external call frame for vm.expectRevert to intercept. This wrapper forces one.
+    function _userDecryptExternal(bytes32 handle, address userAddress, address contractAddress, bytes memory sig)
+        external
+        returns (uint256)
+    {
+        return userDecrypt(handle, userAddress, contractAddress, sig);
+    }
+
+    /// @dev Reserve grants decrypt permission on its confidential balance to its owner (admin).
+    function _decryptReserveBalance() internal returns (uint256) {
+        bytes32 handle = euint64.unwrap(reserve.confidentialBalance());
+        if (handle == bytes32(0)) return 0;
+        bytes memory sig = signUserDecrypt(admin.key, address(reserve));
+        return userDecrypt(handle, admin.addr, address(reserve), sig);
     }
 
     // ---------------------------------------------------------------------
