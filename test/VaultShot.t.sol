@@ -234,4 +234,141 @@ contract VaultShotTest is FhevmTest {
         vm.expectRevert();
         vault.withdraw();
     }
+
+    // ---------------------------------------------------------------------
+    // Draw (two-phase: requestDraw -> off-chain publicDecrypt -> finalizeDraw)
+    // ---------------------------------------------------------------------
+
+    function test_requestDrawRevertsBeforeWindowElapses() public {
+        _deposit(alice, 100 * 10 ** 6);
+        vm.prank(admin.addr);
+        vm.expectRevert(bytes("PrizePool: too early"));
+        prizePool.requestDraw();
+    }
+
+    function test_finalizeDrawRevertsWithoutPendingRequest() public {
+        vm.prank(admin.addr);
+        vm.expectRevert(bytes("PrizePool: no draw pending"));
+        prizePool.finalizeDraw(abi.encode(uint256(0)), bytes(""));
+    }
+
+    function test_fullDrawSkipsWithNoDepositors() public {
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        bytes32 handle = prizePool.requestDraw();
+
+        bytes memory abiEncodedTotal = abi.encode(uint256(0));
+        bytes memory proof = buildDecryptionProof(handle, abiEncodedTotal);
+
+        vm.prank(admin.addr);
+        prizePool.finalizeDraw(abiEncodedTotal, proof);
+
+        assertEq(prizePool.drawCount(), 1);
+        assertEq(uint256(prizePool.stage()), 0); // back to Idle
+    }
+
+    function test_fullDrawDistributesPrizesConfidentially() public {
+        _deposit(alice, 300 * 10 ** 6);
+        _deposit(bob, 200 * 10 ** 6);
+        _deposit(carol, 100 * 10 ** 6);
+
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        bytes32 handle = prizePool.requestDraw();
+        assertEq(uint256(prizePool.stage()), 1); // TotalRequested
+
+        uint256 expectedTotal = 600 * 10 ** 6;
+        bytes memory abiEncodedTotal = abi.encode(expectedTotal);
+        bytes memory proof = buildDecryptionProof(handle, abiEncodedTotal);
+
+        vm.prank(admin.addr);
+        prizePool.finalizeDraw(abiEncodedTotal, proof);
+
+        assertEq(uint256(prizePool.stage()), 0);
+        assertEq(prizePool.drawCount(), 1);
+
+        uint256 aliceBal = _decryptLedgerBalance(alice);
+        uint256 bobBal = _decryptLedgerBalance(bob);
+        uint256 carolBal = _decryptLedgerBalance(carol);
+        uint256 totalCredited = aliceBal + bobBal + carolBal;
+        uint256 totalWon = totalCredited - expectedTotal;
+
+        assertGe(totalWon, prizePool.grandPrizeAmount());
+        assertLe(totalWon, TOTAL_PRIZE_PER_DRAW);
+
+        // Reserve's plaintext accounting budget must have decreased by the exact prize total.
+        uint256 prizeBudget =
+            uint256(prizePool.grandPrizeAmount()) + uint256(prizePool.minorPrizeAmount()) * 3;
+        assertEq(reserve.availableBudget(), RESERVE_FUNDING - prizeBudget);
+    }
+
+    function test_cannotRequestDrawWhileOneIsPending() public {
+        _deposit(alice, 100 * 10 ** 6);
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        prizePool.requestDraw();
+
+        vm.prank(admin.addr);
+        vm.expectRevert(bytes("PrizePool: draw already in progress"));
+        prizePool.requestDraw();
+    }
+
+    function test_soloDepositorCanWithdrawDepositPlusPrizesAfterDraw() public {
+        _deposit(alice, 300 * 10 ** 6);
+
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        bytes32 handle = prizePool.requestDraw();
+
+        bytes memory abiEncodedTotal = abi.encode(uint256(300 * 10 ** 6));
+        bytes memory proof = buildDecryptionProof(handle, abiEncodedTotal);
+        vm.prank(admin.addr);
+        prizePool.finalizeDraw(abiEncodedTotal, proof);
+
+        uint256 expectedBalance = 300 * 10 ** 6 + prizePool.grandPrizeAmount() + prizePool.minorPrizeAmount();
+        assertEq(_decryptLedgerBalance(alice), expectedBalance);
+
+        uint256 tokenBalanceBefore = _decryptTokenBalance(alice);
+        vm.prank(alice.addr);
+        vault.withdraw();
+
+        assertEq(_decryptTokenBalance(alice), tokenBalanceBefore + expectedBalance);
+    }
+
+    function test_reserveUnderfundedSkipsDraw() public {
+        // Drain the reserve's plaintext budget accounting via repeated draws until it can't cover
+        // one more, forcing the underfunded branch. Simpler: deploy a fresh, unfunded pool.
+        vm.startPrank(admin.addr);
+        VaultShotReserve poorReserve = new VaultShotReserve(admin.addr, cusd);
+        VaultShotBalanceLedger poorLedger = new VaultShotBalanceLedger(admin.addr);
+        VaultShotVault poorVault = new VaultShotVault(admin.addr, cusd, poorLedger);
+        VaultShotPrizePool poorPool =
+            new VaultShotPrizePool(admin.addr, poorLedger, poorReserve, poorVault, DRAW_PERIOD, TOTAL_PRIZE_PER_DRAW);
+        poorLedger.setAuthorizedContracts(address(poorVault), address(poorPool));
+        poorReserve.setPrizePool(address(poorPool));
+        poorVault.setPrizePool(address(poorPool));
+        vm.stopPrank();
+
+        vm.prank(alice.addr);
+        cusd.setOperator(address(poorVault), OPERATOR_UNTIL);
+        (externalEuint64 handle, bytes memory proof) = encryptUint64(100 * 10 ** 6, alice.addr, address(poorVault));
+        vm.prank(alice.addr);
+        poorVault.deposit(handle, proof);
+
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(admin.addr);
+        bytes32 totalHandle = poorPool.requestDraw();
+
+        bytes memory abiEncodedTotal = abi.encode(uint256(100 * 10 ** 6));
+        bytes memory decProof = buildDecryptionProof(totalHandle, abiEncodedTotal);
+        vm.prank(admin.addr);
+        poorPool.finalizeDraw(abiEncodedTotal, decProof);
+
+        assertEq(poorPool.drawCount(), 1);
+        // Reserve was never funded, so the draw must skip without crediting any prize.
+        bytes32 balanceHandle = euint64.unwrap(poorLedger.confidentialBalanceOf(alice.addr));
+        bytes memory balanceSig = signUserDecrypt(alice.key, address(poorLedger));
+        assertEq(userDecrypt(balanceHandle, alice.addr, address(poorLedger), balanceSig), 100 * 10 ** 6);
+        assertEq(poorReserve.availableBudget(), 0);
+    }
 }
