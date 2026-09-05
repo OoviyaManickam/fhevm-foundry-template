@@ -199,4 +199,39 @@ contract VaultShotTest is FhevmTest {
         vm.prank(dave);
         vault.deposit(handle, proof);
     }
+
+    // ---------------------------------------------------------------------
+    // Withdraw (single transaction, at any time)
+    // ---------------------------------------------------------------------
+
+    function test_withdrawReturnsFullBalanceInOneTransaction() public {
+        _deposit(alice, 100 * 10 ** 6);
+
+        uint256 tokenBalanceBefore = _decryptTokenBalance(alice);
+
+        vm.prank(alice.addr);
+        vault.withdraw();
+
+        assertEq(_decryptLedgerBalance(alice), 0);
+        assertEq(_decryptTokenBalance(alice), tokenBalanceBefore + 100 * 10 ** 6);
+    }
+
+    function test_withdrawBeforeDrawReturnsExactPrincipal() public {
+        _deposit(alice, 300 * 10 ** 6);
+        // No draw has run — withdrawing now must return exactly principal, no more, no less.
+
+        vm.prank(alice.addr);
+        vault.withdraw();
+
+        assertEq(_decryptTokenBalance(alice), 1_000 * 10 ** 6);
+    }
+
+    /// @dev A user who never deposited has an uninitialized (never-computed) FHE handle for their
+    /// balance — there's no meaningful "zero ciphertext" to transfer, so this reverts rather than
+    /// silently no-op'ing. Degenerate case, not a normal user path.
+    function test_withdrawWithZeroBalanceReverts() public {
+        vm.prank(alice.addr);
+        vm.expectRevert();
+        vault.withdraw();
+    }
 }
