@@ -151,7 +151,42 @@ async function seeAndDecryptBalance(
 }
 
 async function main() {
-  // wired up in the next commit
+  section("SETUP");
+
+  const provider = new JsonRpcProvider(SEPOLIA_RPC_URL);
+  const network = await provider.getNetwork();
+  if (network.chainId !== SEPOLIA_CHAIN_ID) {
+    throw new Error(
+      `Network mismatch: SEPOLIA_RPC_URL points at chain ${network.chainId}, expected Sepolia (${SEPOLIA_CHAIN_ID}). ` +
+        `VaultShot is only deployed on Sepolia — check your .env.`,
+    );
+  }
+
+  const admin = new Wallet(ADMIN_PRIVATE_KEY, provider);
+  const alice = new Wallet(ALICE_PRIVATE_KEY, provider);
+  const bob = new Wallet(BOB_PRIVATE_KEY, provider);
+
+  console.log("Admin:    ", admin.address);
+  console.log("Alice:    ", alice.address);
+  console.log("Bob:      ", bob.address);
+  console.log("MockUSDC: ", USDC_ADDRESS);
+  console.log("cUSD:     ", CUSD_ADDRESS);
+  console.log("Ledger:   ", LEDGER_ADDRESS);
+  console.log("Vault:    ", VAULT_ADDRESS);
+  console.log("Reserve:  ", RESERVE_ADDRESS);
+  console.log("PrizePool:", PRIZEPOOL_ADDRESS);
+
+  const instance = await createInstance({ ...SepoliaConfig, network: SEPOLIA_RPC_URL });
+
+  const usdc = new Contract(USDC_ADDRESS, USDC_ABI, provider);
+  const cusd = new Contract(CUSD_ADDRESS, CUSD_ABI, provider);
+  const ledger = new Contract(LEDGER_ADDRESS, LEDGER_ABI, provider);
+  const vault = new Contract(VAULT_ADDRESS, VAULT_ABI, provider);
+  const reserve = new Contract(RESERVE_ADDRESS, RESERVE_ABI, provider);
+  const prizePool = new Contract(PRIZEPOOL_ADDRESS, PRIZEPOOL_ABI, provider);
+
+  const OPERATOR_UNTIL = 281_474_976_710_655n; // type(uint48).max
+
 }
 
 main().catch((err) => {
