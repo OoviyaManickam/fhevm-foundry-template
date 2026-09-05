@@ -52,88 +52,36 @@ export function SwapModal({
         position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
         overflow: 'hidden',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
-      {/* Fixed-size inner stage */}
-      <div style={{
-        position: 'absolute',
-        top: 0, bottom: 0,
-        left: '50%', transform: 'translateX(-50%)',
-        width: 1200, pointerEvents: 'none',
-      }}>
+      {/* Centering wrapper — holds modal card + figurine together */}
+      <div style={{ position: 'relative', pointerEvents: 'none' }}>
 
-        {/* Figurine */}
+        {/* Blue figurine — positioned to the right, leaning on the card */}
         <img
-          src="/figurine-pink.png"
+          src="/figurine-blue-boy.png"
           alt=""
           style={{
             position: 'absolute',
-            bottom: 0, left: '53%',
-            transform: bubbleVisible ? 'translateX(-60%)' : 'translateX(-60%) translateY(60px)',
-            height: '95vh', width: 'auto',
-            filter: 'drop-shadow(0 -12px 80px rgba(232,130,180,0.5))',
+            bottom: 0,
+            right: -145,
+            height: '85vh',
+            width: 'auto',
+            mixBlendMode: 'multiply',
+            filter: 'drop-shadow(-8px 0 40px rgba(110,181,255,0.35))',
             opacity: bubbleVisible ? 1 : 0,
+            transform: bubbleVisible ? 'translateY(0)' : 'translateY(40px)',
             transition: `opacity 800ms ${EASE}, transform 800ms cubic-bezier(0.34,1.2,0.64,1)`,
             pointerEvents: 'none',
           }}
         />
 
-        {/* Thought bubble */}
-        <div style={{
-          position: 'absolute',
-          top: '9%', left: '7%', width: 240,
-          pointerEvents: 'none',
-          opacity: bubbleVisible ? 1 : 0,
-          transform: bubbleVisible ? 'scale(1)' : 'scale(0.4)',
-          transformOrigin: 'bottom center',
-          transition: `opacity 700ms ${EASE} 200ms, transform 700ms cubic-bezier(0.34,1.6,0.64,1) 200ms`,
-        }}>
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(25,25,38,0.97) 0%, rgba(18,18,30,0.97) 100%)',
-            border: '1.5px solid rgba(255,255,255,0.15)',
-            borderRadius: 24, padding: '18px 22px',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)',
-            position: 'relative',
-          }}>
-            <div style={{ position: 'absolute', top: -1, left: -1, width: 40, height: 40, borderTop: `2px solid ${ACCENT}88`, borderLeft: `2px solid ${ACCENT}88`, borderRadius: '24px 0 0 0' }} />
-            <div style={{ position: 'absolute', bottom: -1, right: -1, width: 30, height: 30, borderBottom: '2px solid #6EB5FF44', borderRight: '2px solid #6EB5FF44', borderRadius: '0 0 24px 0' }} />
-            <p style={{
-              margin: 0, fontSize: '0.8rem', fontWeight: 600, lineHeight: 1.5,
-              letterSpacing: '0.01em', textAlign: 'center', whiteSpace: 'pre-line',
-              color: step === 'done' ? '#6BBF7A' : step === 'swapping' ? ACCENT : 'white',
-              transition: 'color 300ms ease',
-            }}>
-              {step === 'swapping'
-                ? '⏳ swapping your tokens...\nhang tight!'
-                : step === 'done'
-                ? '✅ swap complete!\nnow go deposit 🔒'
-                : step === 'error'
-                ? '⚠️ something went wrong\ntry again'
-                : 'swap mUSDC\nto get cUSDC 🔄\nand enter the vault!'}
-            </p>
-          </div>
-          {[
-            { size: 14, bottom: -18, left: '50%', ml: -7 },
-            { size: 9,  bottom: -30, left: '55%', ml: -4 },
-            { size: 5,  bottom: -39, left: '60%', ml: -2 },
-          ].map((d, i) => (
-            <div key={i} style={{
-              position: 'absolute',
-              bottom: d.bottom, left: d.left, marginLeft: d.ml,
-              width: d.size, height: d.size, borderRadius: '50%',
-              background: 'rgba(25,25,38,0.97)',
-              border: '1.5px solid rgba(255,255,255,0.15)',
-            }} />
-          ))}
-        </div>
-
         {/* Modal card */}
         <div
           onClick={e => e.stopPropagation()}
           style={{
-            position: 'absolute',
-            top: '50%', left: '53%',
-            transform: 'translate(-59%, -81%)',
+            position: 'relative',
             width: 390, borderRadius: 18,
             background: '#13131A', border: `1.5px solid ${ACCENT}44`,
             padding: '1.5rem', zIndex: 10,
