@@ -371,4 +371,22 @@ contract VaultShotTest is FhevmTest {
         assertEq(userDecrypt(balanceHandle, alice.addr, address(poorLedger), balanceSig), 100 * 10 ** 6);
         assertEq(poorReserve.availableBudget(), 0);
     }
+
+    // ---------------------------------------------------------------------
+    // Reserve
+    // ---------------------------------------------------------------------
+
+    /// @dev getEncryptedBalance() is a pure passthrough — same handle as the token's own view,
+    /// with no separate mirror to drift out of sync (contrast FoggyPot's real+mirror duality).
+    function test_reserveGetEncryptedBalanceMatchesTokenBalance() public {
+        bytes32 viaReserve = euint64.unwrap(reserve.getEncryptedBalance());
+        bytes32 viaToken = euint64.unwrap(cusd.confidentialBalanceOf(address(reserve)));
+        assertEq(viaReserve, viaToken);
+    }
+
+    function test_onlyPrizePoolCanReleaseFromReserve() public {
+        vm.prank(alice.addr);
+        vm.expectRevert(bytes("Reserve: not prize pool"));
+        reserve.releaseTo(alice.addr, 10 * 10 ** 6);
+    }
 }
