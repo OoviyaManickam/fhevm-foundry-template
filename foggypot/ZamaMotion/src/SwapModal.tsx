@@ -1,10 +1,44 @@
 import { useState, useEffect } from 'react'
 import { X, ArrowDown } from 'lucide-react'
+import { BrowserProvider, Contract, formatUnits } from 'ethers'
+import { ADDRESSES, TOKEN_ABI } from './contracts'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
 const ACCENT = '#E882B4'
 
 type Step = 'input' | 'swapping' | 'done' | 'error'
+
+async function waitForReceipt(eth: any, txHash: string): Promise<void> {
+  for (;;) {
+    const receipt = await eth.request({ method: 'eth_getTransactionReceipt', params: [txHash] })
+    if (receipt) {
+      if (receipt.status === '0x0') throw new Error('transaction reverted')
+      return
+    }
+    await new Promise(r => setTimeout(r, 2000))
+  }
+}
+
+async function sendTx(eth: any, params: Record<string, string>): Promise<string | null> {
+  const nonceBefore = parseInt(
+    await eth.request({ method: 'eth_getTransactionCount', params: [params.from, 'latest'] }), 16
+  )
+  try {
+    return await eth.request({ method: 'eth_sendTransaction', params: [params] })
+  } catch (e: any) {
+    if (e?.code === 4100) {
+      for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 2000))
+        const nonceNow = parseInt(
+          await eth.request({ method: 'eth_getTransactionCount', params: [params.from, 'latest'] }), 16
+        )
+        if (nonceNow > nonceBefore) return null
+      }
+      throw new Error('timed out waiting for nonce increment after 4100')
+    }
+    throw e
+  }
+}
 
 export function SwapModal({
   wallet,
@@ -17,6 +51,41 @@ export function SwapModal({
   const [step, setStep]               = useState<Step>('input')
   const [bubbleVisible, setBubbleVisible] = useState(false)
   const [errorMsg, setErrorMsg]       = useState<string | null>(null)
+  const [faucetState, setFaucetState] = useState<'idle' | 'loading' | 'done' | 'cooldown'>('idle')
+  const [tokenBalance, setTokenBalance] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!wallet) return
+    const provider = new BrowserProvider((window as any).ethereum)
+    const token = new Contract(ADDRESSES.token, TOKEN_ABI, provider)
+    token.balanceOf(wallet).then((bal: bigint) => {
+      setTokenBalance(formatUnits(bal, 6))
+    }).catch(() => {})
+  }, [wallet, faucetState])
+
+  const handleFaucet = async () => {
+    if (!wallet || faucetState === 'loading') return
+    setFaucetState('loading')
+    const eth = (window as any).ethereum
+    try {
+      const txHash = await sendTx(eth, {
+        from: wallet,
+        to: ADDRESSES.token,
+        data: '0x7b0472f0',
+        gas: '0x186a0',
+      })
+      if (txHash) await waitForReceipt(eth, txHash)
+      setFaucetState('done')
+    } catch (e: any) {
+      const msg = e?.message ?? e?.reason ?? e?.info?.error?.message ?? JSON.stringify(e)
+      if (msg.toLowerCase().includes('cooldown')) {
+        setFaucetState('cooldown')
+      } else {
+        setFaucetState('idle')
+        console.error('faucet error', e)
+      }
+    }
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setBubbleVisible(true), 300)
@@ -79,9 +148,9 @@ export function SwapModal({
       {/* Thought bubble above figurine — anchored same horizontal position */}
       <div style={{
         position: 'fixed',
-        bottom: '83vh',
+        bottom: '80vh',
         left: '50%',
-        marginLeft: 390 / 2 - 120,
+        marginLeft: 390 / 2 - 190,
         width: 230,
         opacity: bubbleVisible ? 1 : 0,
         transform: bubbleVisible ? 'scale(1)' : 'scale(0.4)',
@@ -101,25 +170,57 @@ export function SwapModal({
           {/* Corner accents */}
           <div style={{ position: 'absolute', top: -1, left: -1, width: 32, height: 32, borderTop: '2px solid #6EB5FF88', borderLeft: '2px solid #6EB5FF88', borderRadius: '18px 0 0 0' }} />
           <div style={{ position: 'absolute', bottom: -1, right: -1, width: 24, height: 24, borderBottom: '2px solid #6EB5FF44', borderRight: '2px solid #6EB5FF44', borderRadius: '0 0 18px 0' }} />
+
           <p style={{
-            margin: 0, fontSize: '0.72rem', fontWeight: 600, lineHeight: 1.55,
-            letterSpacing: '0.01em', textAlign: 'center', whiteSpace: 'pre-line',
-            color: 'white',
+            margin: '0 0 8px', fontSize: '0.72rem', fontWeight: 600, lineHeight: 1.5,
+            textAlign: 'center', whiteSpace: 'pre-line', color:
+              faucetState === 'done' ? '#6BBF7A' : faucetState === 'loading' ? '#6EB5FF' : 'white',
+            transition: 'color 300ms ease',
           }}>
-            {'need mUSDC? 👇\nget test tokens here!\n'}
-            <span style={{ fontSize: '0.62rem', color: '#6EB5FF', fontWeight: 500 }}>
-              {'wrap it → ERC-7984\nconfidential token 🔒'}
-            </span>
+            {faucetState === 'loading'
+              ? '⏳ getting your tokens...\nhang tight!'
+              : faucetState === 'done'
+              ? '✅ 1000 mUSDC dropped!\nnow swap to cUSDC 🔄'
+              : faucetState === 'cooldown'
+              ? '⏱ already claimed!\ncome back later'
+              : 'need mUSDC? 👇\nwrap it → ERC-7984\nconfidential token 🔒'}
           </p>
+
+          {tokenBalance !== null && (
+            <div style={{ fontSize: '0.6rem', textAlign: 'center', marginBottom: 8,
+              color: faucetState === 'done' ? 'rgba(107,191,122,0.7)' : 'rgba(255,255,255,0.4)',
+            }}>
+              Balance: {Number(tokenBalance).toFixed(2)} mUSDC
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button
+              onClick={handleFaucet}
+              disabled={faucetState === 'loading' || !wallet}
+              style={{
+                background: 'rgba(110,181,255,0.15)',
+                border: `1px solid ${faucetState === 'done' ? '#6BBF7A44' : faucetState === 'cooldown' ? 'rgba(255,255,255,0.1)' : 'rgba(110,181,255,0.45)'}`,
+                borderRadius: 50, padding: '0.4rem 1rem',
+                fontSize: '0.63rem', fontWeight: 700,
+                color: faucetState === 'done' ? '#6BBF7A' : faucetState === 'cooldown' ? 'rgba(255,255,255,0.3)' : '#6EB5FF',
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                cursor: faucetState === 'loading' || !wallet ? 'wait' : 'pointer',
+                pointerEvents: 'auto',
+              }}
+            >
+              {faucetState === 'loading' ? 'CLAIMING...' : faucetState === 'done' ? '✓ CLAIMED!' : faucetState === 'cooldown' ? 'ON COOLDOWN' : 'GET mUSDC'}
+            </button>
+          </div>
+
           <div style={{
-            marginTop: 10,
-            padding: '8px 10px',
+            marginTop: 10, padding: '7px 10px',
             background: 'rgba(110,181,255,0.07)',
             border: '1px solid rgba(110,181,255,0.2)',
             borderRadius: 10,
-            fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.55, textAlign: 'left',
+            fontSize: '0.58rem', color: 'rgba(255,255,255,0.45)', lineHeight: 1.55,
           }}>
-            cUSDC is the confidential version of mUSDC. Your vault balance will be fully encrypted using <span style={{ color: '#6EB5FF', fontWeight: 600 }}>Zama FHE</span>.
+            cUSDC is the confidential version of mUSDC. Fully encrypted via <span style={{ color: '#6EB5FF', fontWeight: 600 }}>Zama FHE</span>.
           </div>
         </div>
         {/* Tail dots — descending toward figurine head */}
