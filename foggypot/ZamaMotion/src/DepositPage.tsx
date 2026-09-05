@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserProvider, Contract, formatUnits } from 'ethers'
 import { ArrowLeft, Search, TrendingUp, Users, Trophy, Zap, ChevronRight, Star, X, Lock } from 'lucide-react'
-import { ADDRESSES, TOKEN_ABI, VAULT_ABI } from './contracts'
+import { ADDRESSES, USDC_ABI, VAULT_ABI } from './contracts'
 import { SwapModal } from './SwapModal'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
@@ -278,12 +278,12 @@ function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultTyp
   const [amount, setAmount] = useState('')
   const [step, setStep] = useState<'input' | 'approving' | 'depositing' | 'done'>('input')
   const [bubbleVisible, setBubbleVisible] = useState(false)
-  const [tokenBalance, setTokenBalance] = useState<string | null>(null)
+  const [_tokenBalance, setTokenBalance] = useState<string | null>(null)
 
   useEffect(() => {
     if (!wallet) return
     const provider = new BrowserProvider((window as any).ethereum)
-    const token = new Contract(ADDRESSES.token, TOKEN_ABI, provider)
+    const token = new Contract(ADDRESSES.usdc, USDC_ABI, provider)
     token.balanceOf(wallet).then((bal: bigint) => {
       setTokenBalance(formatUnits(bal, 6))
     }).catch(() => {})
@@ -325,14 +325,14 @@ function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultTyp
       const allowanceRes = await fetch(import.meta.env.VITE_SEPOLIA_RPC_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: ADDRESSES.token, data: allowanceData }, 'latest'] }),
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: ADDRESSES.usdc, data: allowanceData }, 'latest'] }),
       })
       const allowanceJson = await allowanceRes.json()
       const currentAllowance = BigInt(allowanceJson.result ?? '0x0')
 
       if (currentAllowance < rawAmount) {
         setStep('approving')
-        const approveTxHash = await sendTx(eth, { from: address, to: ADDRESSES.token, data: approveData, gas: '0x186a0' })
+        const approveTxHash = await sendTx(eth, { from: address, to: ADDRESSES.usdc, data: approveData, gas: '0x186a0' })
         if (approveTxHash) await waitForReceipt(eth, approveTxHash)
       }
 
@@ -762,7 +762,7 @@ export default function DepositPage() {
   const [search, setSearch] = useState('')
   const [visible, setVisible] = useState(false)
   const [wallet, setWallet] = useState<string | null>(null)
-  const [walletError, setWalletError] = useState<string | null>(null)
+  const [_walletError, setWalletError] = useState<string | null>(null)
   const [selectedVault, setSelectedVault] = useState<VaultType | null>(null)
   const [swapOpen, setSwapOpen] = useState(false)
   const [totalDeposits, setTotalDeposits] = useState<string | null>(null)

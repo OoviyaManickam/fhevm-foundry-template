@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { JsonRpcProvider, Contract, formatUnits } from 'ethers'
 import { ArrowLeft, Shield, Clock, Trophy, Activity, Eye, EyeOff, Wallet, ChevronRight, Lock, Unlock } from 'lucide-react'
 import { initSDK, createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/web'
-import { ADDRESSES, VAULT_ABI, TOKEN_ABI, LEDGER_ABI } from './contracts'
+import { ADDRESSES, USDC_ABI, LEDGER_ABI } from './contracts'
 import { WithdrawModal } from './WithdrawModal'
 import { SimpleSwapModal } from './SimpleSwapModal'
 
@@ -31,7 +31,6 @@ type PrizeWin = {
 type VaultState = {
   hasDeposit: boolean
   encryptedHandle: string
-  pendingWithdrawHandle: string
   mUSDCBalance: string
   totalDeposits: string
   drawCount: number
@@ -127,15 +126,12 @@ export default function ProfilePage() {
     setLoading(true)
     try {
       const provider = new JsonRpcProvider(RPC, 11155111, { staticNetwork: true })
-      const vault    = new Contract(ADDRESSES.vault,  VAULT_ABI,  provider)
-      const token    = new Contract(ADDRESSES.token,  TOKEN_ABI,  provider)
+      const token    = new Contract(ADDRESSES.usdc,   USDC_ABI,   provider)
       const ledger   = new Contract(ADDRESSES.ledger, LEDGER_ABI, provider)
 
-      const [handle, pendingHandle, mUSDCBal, totalDep, drawCount] = await Promise.all([
+      const [handle, mUSDCBal, drawCount] = await Promise.all([
         ledger.confidentialBalanceOf(addr)     as Promise<string>,
-        vault.pendingWithdrawHandle(addr)      as Promise<string>,
         token.balanceOf(addr)                  as Promise<bigint>,
-        vault.totalDeposits()                  as Promise<bigint>,
         // drawCount lives on prize pool
         new Contract(ADDRESSES.prizePool, ['function drawCount() view returns (uint256)'], provider)
           .drawCount().catch(() => 0n)          as Promise<bigint>,
@@ -146,9 +142,8 @@ export default function ProfilePage() {
       setVaultState({
         hasDeposit,
         encryptedHandle: handle,
-        pendingWithdrawHandle: pendingHandle,
         mUSDCBalance: formatUnits(mUSDCBal, 6),
-        totalDeposits: Number(formatUnits(totalDep, 6)).toLocaleString(undefined, { maximumFractionDigits: 2 }),
+        totalDeposits: '—',
         drawCount: Number(drawCount),
       })
 
@@ -159,16 +154,16 @@ export default function ProfilePage() {
 
       const [depositsRaw, withdrawsRaw, faucetsRaw, prizeRaw] = await Promise.all([
         // deposits: Transfer from wallet → vault (token contract)
-        provider.getLogs({ address: ADDRESSES.token, fromBlock: 7000000, toBlock: 'latest',
+        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 7000000, toBlock: 'latest',
           topics: [transferTopic, addrPadded, vaultPadded] }),
         // withdraws: Transfer from vault → wallet (token contract)
-        provider.getLogs({ address: ADDRESSES.token, fromBlock: 7000000, toBlock: 'latest',
+        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 7000000, toBlock: 'latest',
           topics: [transferTopic, vaultPadded, addrPadded] }),
         // faucet mints: Transfer from 0x0 → wallet
-        provider.getLogs({ address: ADDRESSES.token, fromBlock: 7000000, toBlock: 'latest',
+        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 7000000, toBlock: 'latest',
           topics: [transferTopic, '0x0000000000000000000000000000000000000000000000000000000000000000', addrPadded] }),
         // prize payouts: Transfer from prizePool → wallet
-        provider.getLogs({ address: ADDRESSES.token, fromBlock: 7000000, toBlock: 'latest',
+        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 7000000, toBlock: 'latest',
           topics: [transferTopic, '0x000000000000000000000000' + ADDRESSES.prizePool.slice(2).toLowerCase(), addrPadded] }),
       ])
 
@@ -204,7 +199,7 @@ export default function ProfilePage() {
             .filter(d => (d.blockNumber ?? 0) <= (log.blockNumber ?? 0))
             .sort((a, b) => (b.blockNumber ?? 0) - (a.blockNumber ?? 0))[0]
           const drawId = drawLog
-            ? Number(BigInt('0x' + drawLog.topics[1]?.slice(2).padStart(64, '0') ?? '0'))
+            ? Number(BigInt('0x' + (drawLog.topics[1]?.slice(2) ?? '0').padStart(64, '0')))
             : idx + 1
           return {
             amount: decodeAmount(log),
@@ -502,28 +497,6 @@ export default function ProfilePage() {
                           <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)', marginTop: 6 }}>
                             click eye to reveal ciphertext handle
                           </div>
-                        )}
-                      </div>
-
-                      {/* Pending withdraw */}
-                      <div style={{
-                        background: 'rgba(255,255,255,0.04)', borderRadius: 12,
-                        padding: '1rem 1.1rem', border: `1px solid ${vaultState.pendingWithdrawHandle !== ZERO ? 'rgba(244,132,95,0.3)' : 'rgba(255,255,255,0.07)'}`,
-                      }}>
-                        <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>
-                          PENDING WITHDRAW
-                        </div>
-                        {vaultState.pendingWithdrawHandle !== ZERO ? (
-                          <>
-                            <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#F4845F', wordBreak: 'break-all', lineHeight: 1.4 }}>
-                              {vaultState.pendingWithdrawHandle.slice(0, 18)}...
-                            </div>
-                            <div style={{ fontSize: '0.6rem', color: 'rgba(244,132,95,0.6)', marginTop: 6 }}>
-                              handle exists — ready to finalize
-                            </div>
-                          </>
-                        ) : (
-                          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>None</div>
                         )}
                       </div>
                     </div>

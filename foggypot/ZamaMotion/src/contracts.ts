@@ -1,28 +1,33 @@
-// Contract addresses — pulled from .env (VITE_ prefix required by Vite for browser access)
 export const ADDRESSES = {
-  token:     import.meta.env.VITE_TOKEN_ADDRESS     as string,
+  usdc:      import.meta.env.VITE_USDC_ADDRESS      as string,
+  cusd:      import.meta.env.VITE_CUSD_ADDRESS      as string,
   ledger:    import.meta.env.VITE_LEDGER_ADDRESS    as string,
   vault:     import.meta.env.VITE_VAULT_ADDRESS     as string,
   prizePool: import.meta.env.VITE_PRIZEPOOL_ADDRESS as string,
 }
 
-// We only list the functions the frontend actually calls — no need for the full ABI.
-// Each string is a human-readable ABI fragment that ethers parses automatically.
-
-export const TOKEN_ABI = [
+// MockUSDC — plaintext faucet token
+export const USDC_ABI = [
   'function faucet()',
   'function balanceOf(address) view returns (uint256)',
   'function approve(address spender, uint256 amount) returns (bool)',
 ] as const
 
-export const LEDGER_ABI = [
+// VaultShotToken (cUSD) — confidential ERC-7984 wrapper
+export const CUSD_ABI = [
+  'function wrap(address to, uint256 amount)',
+  'function setOperator(address operator, uint48 until)',
   'function confidentialBalanceOf(address account) view returns (bytes32)',
 ] as const
 
+// VaultShotBalanceLedger — encrypted per-user pool shares
+export const LEDGER_ABI = [
+  'function seeConfidentialBalance(address account) view returns (bytes32)',
+  'function confidentialBalanceOf(address account) view returns (bytes32)',
+] as const
+
+// VaultShotVault — deposit / withdraw entry point
 export const VAULT_ABI = [
-  'function deposit(uint64 amount)',
-  'function requestWithdraw()',
-  'function finalizeWithdraw(bytes abiEncodedCleartexts, bytes decryptionProof)',
-  'function pendingWithdrawHandle(address) view returns (bytes32)',
-  'function totalDeposits() view returns (uint64)',
+  'function deposit(bytes32 encryptedAmount, bytes inputProof)',
+  'function withdraw()',
 ] as const

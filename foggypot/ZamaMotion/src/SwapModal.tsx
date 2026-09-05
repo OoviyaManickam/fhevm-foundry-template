@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, ArrowDown } from 'lucide-react'
 import { BrowserProvider, Contract, formatUnits } from 'ethers'
-import { ADDRESSES, TOKEN_ABI } from './contracts'
+import { ADDRESSES, USDC_ABI } from './contracts'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
 const ACCENT = '#E882B4'
@@ -57,7 +57,7 @@ export function SwapModal({
   useEffect(() => {
     if (!wallet) return
     const provider = new BrowserProvider((window as any).ethereum)
-    const token = new Contract(ADDRESSES.token, TOKEN_ABI, provider)
+    const token = new Contract(ADDRESSES.usdc, USDC_ABI, provider)
     token.balanceOf(wallet).then((bal: bigint) => {
       setTokenBalance(formatUnits(bal, 6))
     }).catch(() => {})
@@ -70,7 +70,7 @@ export function SwapModal({
     try {
       const txHash = await sendTx(eth, {
         from: wallet,
-        to: ADDRESSES.token,
+        to: ADDRESSES.usdc,
         data: '0x7b0472f0',
         gas: '0x186a0',
       })

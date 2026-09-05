@@ -1,27 +1,19 @@
 import { useState } from 'react'
-import { JsonRpcProvider, Contract, formatUnits, Interface } from 'ethers'
-import { initSDK, createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/web'
 import { X, Lock } from 'lucide-react'
-import { ADDRESSES, VAULT_ABI, TOKEN_ABI } from './contracts'
+import { ADDRESSES } from './contracts'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
 
-type Step =
-  | 'idle'
-  | 'requesting'    // calling requestWithdraw()
-  | 'decrypting'    // calling publicDecrypt via Zama Relayer
-  | 'finalizing'    // calling finalizeWithdraw()
-  | 'done'
-  | 'error'
+type Step = 'idle' | 'withdrawing' | 'done' | 'error'
 
 async function sendTx(eth: any, params: Record<string, string>): Promise<string | null> {
+  const nonceBefore = parseInt(
+    await eth.request({ method: 'eth_getTransactionCount', params: [params.from, 'latest'] }), 16
+  )
   try {
     return await eth.request({ method: 'eth_sendTransaction', params: [params] })
   } catch (e: any) {
     if (e?.code === 4100) {
-      const nonceBefore = parseInt(
-        await eth.request({ method: 'eth_getTransactionCount', params: [params.from, 'latest'] }), 16
-      )
       for (let i = 0; i < 120; i++) {
         await new Promise(r => setTimeout(r, 2000))
         const nonceNow = parseInt(
@@ -58,7 +50,6 @@ export function WithdrawModal({
   onWithdrawn: () => void
 }) {
   const [step, setStep] = useState<Step>('idle')
-  const [withdrawnAmount, setWithdrawnAmount] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const onBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -68,81 +59,19 @@ export function WithdrawModal({
   const handleWithdraw = async () => {
     const eth = (window as any).ethereum
     setErrorMsg(null)
+    setStep('withdrawing')
 
     try {
-      const provider = new JsonRpcProvider(import.meta.env.VITE_SEPOLIA_RPC_URL, 11155111, { staticNetwork: true })
-      const vaultContract = new Contract(ADDRESSES.vault, VAULT_ABI, provider)
-      const ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000'
-
-      // ── Step 1: requestWithdraw() — skip if handle already exists ─────────
-      setStep('requesting')
-
-      let handle = (await vaultContract.pendingWithdrawHandle(wallet)) as string
-
-      if (handle === ZERO) {
-        // No pending handle — call requestWithdraw() to create one
-        const requestData = '0xb3423eec' // keccak256("requestWithdraw()")[0:4]
-        const requestTxHash = await sendTx(eth, {
-          from: wallet,
-          to: ADDRESSES.vault,
-          data: requestData,
-          gas: '0x7a120',
-        })
-        if (requestTxHash) await waitForReceipt(eth, requestTxHash)
-        handle = (await vaultContract.pendingWithdrawHandle(wallet)) as string
-      }
-
-      if (!handle || handle === ZERO) {
-        throw new Error('No pending withdraw handle found — requestWithdraw may have failed')
-      }
-
-      // ── Step 2: publicDecrypt via Zama Relayer ─────────────────────────────
-      setStep('decrypting')
-
-      await initSDK()
-      const instance = await createInstance({
-        ...SepoliaConfig,
-        network: import.meta.env.VITE_SEPOLIA_RPC_URL,
-      })
-
-      const { abiEncodedClearValues, decryptionProof, clearValues } =
-        await instance.publicDecrypt([handle])
-
-      const cleartextAmount = BigInt(
-        clearValues[handle as `0x${string}`] as string | bigint
-      )
-
-      // ── Step 3: finalizeWithdraw(abiEncodedClearValues, decryptionProof) ───
-      setStep('finalizing')
-
-      // Encode finalizeWithdraw(bytes, bytes) call using ethers AbiCoder
-      const tokenContract = new Contract(ADDRESSES.token, TOKEN_ABI, provider)
-      const balanceBefore = (await tokenContract.balanceOf(wallet)) as bigint
-
-      // Build calldata: selector + abi.encode(bytes, bytes)
-      // selector for finalizeWithdraw(bytes,bytes) = keccak256(...)[0:4]
-      // We use ethers Interface to encode properly
-      const iface = new Interface([
-        'function finalizeWithdraw(bytes abiEncodedCleartexts, bytes decryptionProof)',
-      ])
-      const finalizeData = iface.encodeFunctionData('finalizeWithdraw', [
-        abiEncodedClearValues,
-        decryptionProof,
-      ])
-
-      const finalizeTxHash = await sendTx(eth, {
+      // withdraw() pulls the caller's full encrypted balance in one tx — no request/finalize needed
+      // selector: keccak256("withdraw()")[0:4] = 0x3ccfd60b
+      const txHash = await sendTx(eth, {
         from: wallet,
         to: ADDRESSES.vault,
-        data: finalizeData,
-        gas: '0xF4240', // 1M gas — FHE.checkSignatures is expensive
+        data: '0x3ccfd60b',
+        gas: '0x7a120',
       })
-      if (finalizeTxHash) await waitForReceipt(eth, finalizeTxHash)
+      if (txHash) await waitForReceipt(eth, txHash)
 
-      const balanceAfter = (await tokenContract.balanceOf(wallet)) as bigint
-      const received = balanceAfter - balanceBefore
-      setWithdrawnAmount(
-        formatUnits(received > 0n ? received : cleartextAmount, 6)
-      )
       setStep('done')
       onWithdrawn()
     } catch (e: any) {
@@ -151,15 +80,6 @@ export function WithdrawModal({
       setErrorMsg(msg)
       setStep('error')
     }
-  }
-
-  const stepLabel: Record<Step, string> = {
-    idle:       '',
-    requesting: '⏳ Step 1/3 — Requesting withdraw on-chain...',
-    decrypting: '🔓 Step 2/3 — Zama Relayer decrypting your balance...',
-    finalizing: '⏳ Step 3/3 — Finalizing withdraw on-chain...',
-    done:       '',
-    error:      '',
   }
 
   return (
@@ -208,7 +128,7 @@ export function WithdrawModal({
               WITHDRAW
             </div>
             <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 2 }}>
-              mUSDC Vault · Zama FHE
+              cUSD Vault · Zama FHE
             </div>
           </div>
         </div>
@@ -219,9 +139,9 @@ export function WithdrawModal({
           borderRadius: 10, padding: '0.85rem 1rem', marginBottom: '1.5rem',
           fontSize: '0.7rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.6,
         }}>
-          This withdraws your <strong style={{ color: 'white' }}>full encrypted balance</strong> back
-          to your wallet. The Zama Relayer decrypts your ciphertext and produces a proof
-          the contract verifies on-chain — nobody sees your balance except you.
+          Withdraws your <strong style={{ color: 'white' }}>full encrypted balance</strong> — principal
+          plus any prize winnings — back to your wallet in a single transaction.
+          Your balance remains encrypted throughout.
         </div>
 
         {step === 'done' ? (
@@ -234,7 +154,7 @@ export function WithdrawModal({
               WITHDRAW COMPLETE
             </div>
             <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', marginBottom: '1.5rem' }}>
-              {withdrawnAmount ? `${withdrawnAmount} mUSDC returned to your wallet` : 'Funds returned to your wallet'}
+              Your cUSD has been returned to your wallet.
             </div>
             <button
               onClick={onClose}
@@ -271,28 +191,16 @@ export function WithdrawModal({
               TRY AGAIN
             </button>
           </div>
-        ) : step !== 'idle' ? (
+        ) : step === 'withdrawing' ? (
           <div style={{ textAlign: 'center', padding: '1rem 0' }}>
             <div style={{
               fontSize: '0.78rem', color: vaultColor, fontWeight: 600,
               letterSpacing: '0.06em', marginBottom: 8,
             }}>
-              {stepLabel[step]}
+              ⏳ Withdrawing...
             </div>
             <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
-              {step === 'decrypting'
-                ? 'This takes ~10-20s — the Zama Relayer is producing a decryption proof'
-                : 'Confirm in MetaMask if prompted'}
-            </div>
-            {/* Progress dots */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 20 }}>
-              {(['requesting', 'decrypting', 'finalizing'] as Step[]).map((s, i) => (
-                <div key={i} style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: step === s ? vaultColor : 'rgba(255,255,255,0.15)',
-                  transition: `background 300ms ${EASE}`,
-                }} />
-              ))}
+              Confirm in MetaMask if prompted
             </div>
           </div>
         ) : (
