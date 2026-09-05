@@ -1,0 +1,347 @@
+import { useState, useEffect } from 'react'
+import { X, ArrowDown } from 'lucide-react'
+
+const EASE = 'cubic-bezier(0.4,0,0.2,1)'
+const ACCENT = '#E882B4'
+
+type Step = 'input' | 'swapping' | 'done' | 'error'
+
+export function SwapModal({
+  wallet,
+  onClose,
+}: {
+  wallet: string | null
+  onClose: () => void
+}) {
+  const [amount, setAmount]           = useState('')
+  const [step, setStep]               = useState<Step>('input')
+  const [bubbleVisible, setBubbleVisible] = useState(false)
+  const [errorMsg, setErrorMsg]       = useState<string | null>(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setBubbleVisible(true), 300)
+    return () => clearTimeout(t)
+  }, [])
+
+  const onBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose()
+  }
+
+  const handleSwap = async () => {
+    if (!amount || Number(amount) <= 0 || !wallet) return
+    setStep('swapping')
+    setErrorMsg(null)
+    try {
+      // Contract not yet deployed — wired later
+      await new Promise(r => setTimeout(r, 1000))
+      throw new Error('Swap contract not yet deployed — coming soon!')
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? 'Swap failed')
+      setStep('error')
+    }
+  }
+
+  const outAmount = amount && Number(amount) > 0
+    ? Number(amount).toFixed(2)
+    : '0.00'
+
+  return (
+    <div
+      onClick={onBackdrop}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Fixed-size inner stage */}
+      <div style={{
+        position: 'absolute',
+        top: 0, bottom: 0,
+        left: '50%', transform: 'translateX(-50%)',
+        width: 1200, pointerEvents: 'none',
+      }}>
+
+        {/* Figurine */}
+        <img
+          src="/figurine-pink.png"
+          alt=""
+          style={{
+            position: 'absolute',
+            bottom: 0, left: '53%',
+            transform: bubbleVisible ? 'translateX(-60%)' : 'translateX(-60%) translateY(60px)',
+            height: '95vh', width: 'auto',
+            filter: 'drop-shadow(0 -12px 80px rgba(232,130,180,0.5))',
+            opacity: bubbleVisible ? 1 : 0,
+            transition: `opacity 800ms ${EASE}, transform 800ms cubic-bezier(0.34,1.2,0.64,1)`,
+            pointerEvents: 'none',
+          }}
+        />
+
+        {/* Thought bubble */}
+        <div style={{
+          position: 'absolute',
+          top: '9%', left: '7%', width: 240,
+          pointerEvents: 'none',
+          opacity: bubbleVisible ? 1 : 0,
+          transform: bubbleVisible ? 'scale(1)' : 'scale(0.4)',
+          transformOrigin: 'bottom center',
+          transition: `opacity 700ms ${EASE} 200ms, transform 700ms cubic-bezier(0.34,1.6,0.64,1) 200ms`,
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(25,25,38,0.97) 0%, rgba(18,18,30,0.97) 100%)',
+            border: '1.5px solid rgba(255,255,255,0.15)',
+            borderRadius: 24, padding: '18px 22px',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)',
+            position: 'relative',
+          }}>
+            <div style={{ position: 'absolute', top: -1, left: -1, width: 40, height: 40, borderTop: `2px solid ${ACCENT}88`, borderLeft: `2px solid ${ACCENT}88`, borderRadius: '24px 0 0 0' }} />
+            <div style={{ position: 'absolute', bottom: -1, right: -1, width: 30, height: 30, borderBottom: '2px solid #6EB5FF44', borderRight: '2px solid #6EB5FF44', borderRadius: '0 0 24px 0' }} />
+            <p style={{
+              margin: 0, fontSize: '0.8rem', fontWeight: 600, lineHeight: 1.5,
+              letterSpacing: '0.01em', textAlign: 'center', whiteSpace: 'pre-line',
+              color: step === 'done' ? '#6BBF7A' : step === 'swapping' ? ACCENT : 'white',
+              transition: 'color 300ms ease',
+            }}>
+              {step === 'swapping'
+                ? '⏳ swapping your tokens...\nhang tight!'
+                : step === 'done'
+                ? '✅ swap complete!\nnow go deposit 🔒'
+                : step === 'error'
+                ? '⚠️ something went wrong\ntry again'
+                : 'swap mUSDC\nto get cUSDC 🔄\nand enter the vault!'}
+            </p>
+          </div>
+          {[
+            { size: 14, bottom: -18, left: '50%', ml: -7 },
+            { size: 9,  bottom: -30, left: '55%', ml: -4 },
+            { size: 5,  bottom: -39, left: '60%', ml: -2 },
+          ].map((d, i) => (
+            <div key={i} style={{
+              position: 'absolute',
+              bottom: d.bottom, left: d.left, marginLeft: d.ml,
+              width: d.size, height: d.size, borderRadius: '50%',
+              background: 'rgba(25,25,38,0.97)',
+              border: '1.5px solid rgba(255,255,255,0.15)',
+            }} />
+          ))}
+        </div>
+
+        {/* Modal card */}
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            top: '50%', left: '53%',
+            transform: 'translate(-59%, -81%)',
+            width: 390, borderRadius: 18,
+            background: '#13131A', border: `1.5px solid ${ACCENT}44`,
+            padding: '1.5rem', zIndex: 10,
+            boxShadow: '0 20px 40px -10px rgba(0,0,0,0.6)',
+            opacity: bubbleVisible ? 1 : 0,
+            transition: `opacity 300ms ${EASE}`,
+            pointerEvents: 'auto',
+          }}
+        >
+          {/* Close */}
+          <button onClick={onClose} style={{
+            position: 'absolute', top: 16, right: 16,
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 50, width: 32, height: 32, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)',
+          }}>
+            <X size={15} />
+          </button>
+
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1.5rem' }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: `linear-gradient(135deg, ${ACCENT}44, ${ACCENT}88)`,
+              border: `1.5px solid ${ACCENT}66`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.1rem',
+            }}>⇄</div>
+            <div>
+              <div style={{ fontFamily: "'Anton', sans-serif", fontSize: '1.1rem', color: 'white', letterSpacing: '0.05em' }}>SWAP TOKENS</div>
+              <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 2 }}>
+                mUSDC → cUSDC · Confidential Token
+              </div>
+            </div>
+          </div>
+
+          {/* Info strip */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr',
+            gap: 1, borderRadius: 12, overflow: 'hidden', marginBottom: '1.5rem',
+            border: '1px solid rgba(255,255,255,0.07)',
+          }}>
+            {[
+              { label: 'FROM', value: 'mUSDC' },
+              { label: 'TO', value: 'cUSDC' },
+            ].map(item => (
+              <div key={item.label} style={{ background: 'rgba(255,255,255,0.04)', padding: '0.75rem 0.85rem' }}>
+                <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>{item.label}</div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: ACCENT }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {step === 'done' ? (
+            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🎉</div>
+              <div style={{ fontFamily: "'Anton', sans-serif", fontSize: '1.2rem', color: '#6BBF7A', letterSpacing: '0.05em', marginBottom: 6 }}>SWAP SUCCESSFUL</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', marginBottom: '1.5rem' }}>
+                You now have cUSDC — ready to deposit into the vault!
+              </div>
+              <button onClick={onClose} style={{
+                width: '100%', padding: '0.85rem',
+                background: '#6BBF7A', border: 'none', borderRadius: 50,
+                color: '#0A0A0F', fontSize: '0.78rem', fontWeight: 700,
+                letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer',
+              }}>DONE</button>
+            </div>
+          ) : step === 'error' ? (
+            <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⚠️</div>
+              <div style={{
+                fontSize: '0.7rem', color: '#F4845F',
+                background: 'rgba(244,132,95,0.08)', border: '1px solid rgba(244,132,95,0.25)',
+                borderRadius: 8, padding: '0.75rem', marginBottom: '1.25rem',
+                wordBreak: 'break-word', textAlign: 'left', lineHeight: 1.5,
+              }}>{errorMsg}</div>
+              <button onClick={() => { setStep('input'); setErrorMsg(null) }} style={{
+                width: '100%', padding: '0.85rem',
+                background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 50, color: 'white', fontSize: '0.78rem', fontWeight: 700,
+                letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer',
+              }}>TRY AGAIN</button>
+            </div>
+          ) : step === 'swapping' ? (
+            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+              <div style={{ fontSize: '0.78rem', color: ACCENT, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 8 }}>
+                ⏳ Swapping tokens...
+              </div>
+              <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                Confirm in MetaMask if prompted
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* From input */}
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                  Amount (mUSDC)
+                </div>
+                <div style={{
+                  display: 'flex', alignItems: 'center',
+                  background: 'rgba(255,255,255,0.05)', border: '1.5px solid rgba(255,255,255,0.12)',
+                  borderRadius: 12, overflow: 'hidden',
+                }}>
+                  <input
+                    type="number" placeholder="0.00" value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    style={{
+                      flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                      color: 'white', fontSize: '1.1rem', fontWeight: 600, padding: '0.85rem 1rem',
+                    }}
+                  />
+                  <span style={{ padding: '0 1rem', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.08em' }}>
+                    mUSDC
+                  </span>
+                </div>
+              </div>
+
+              {/* Arrow */}
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '0.5rem 0' }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: `${ACCENT}22`, border: `1.5px solid ${ACCENT}44`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <ArrowDown size={14} color={ACCENT} />
+                </div>
+              </div>
+
+              {/* To output */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+                  You receive (cUSDC)
+                </div>
+                <div style={{
+                  display: 'flex', alignItems: 'center',
+                  background: 'rgba(255,255,255,0.03)', border: `1.5px solid ${ACCENT}33`,
+                  borderRadius: 12, overflow: 'hidden',
+                }}>
+                  <div style={{
+                    flex: 1, padding: '0.85rem 1rem',
+                    fontSize: '1.1rem', fontWeight: 600,
+                    color: outAmount === '0.00' ? 'rgba(255,255,255,0.2)' : ACCENT,
+                  }}>
+                    {outAmount}
+                  </div>
+                  <span style={{ padding: '0 1rem', fontSize: '0.75rem', fontWeight: 700, color: ACCENT, letterSpacing: '0.08em' }}>
+                    cUSDC
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.25)', marginTop: 5 }}>
+                  1 mUSDC = 1 cUSDC · no fees
+                </div>
+              </div>
+
+              {/* Connected wallet row */}
+              {wallet && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: 'rgba(255,255,255,0.03)', borderRadius: 10,
+                  padding: '0.65rem 0.85rem', marginBottom: '1.25rem',
+                }}>
+                  <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Connected</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6BBF7A', fontFamily: 'monospace' }}>
+                    {wallet.slice(0, 6)}...{wallet.slice(-4)}
+                  </span>
+                </div>
+              )}
+
+              {/* Info banner */}
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                background: `${ACCENT}11`, border: `1px solid ${ACCENT}33`,
+                borderRadius: 10, padding: '0.7rem 0.85rem', marginBottom: '1.5rem',
+              }}>
+                <span style={{ fontSize: '0.9rem', flexShrink: 0 }}>🔒</span>
+                <span style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
+                  cUSDC is the confidential version of mUSDC. Your vault balance will be fully encrypted using Zama FHE.
+                </span>
+              </div>
+
+              {/* Swap button */}
+              {!wallet ? (
+                <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', padding: '0.5rem 0' }}>
+                  Connect your wallet to swap
+                </div>
+              ) : (
+                <button
+                  onClick={handleSwap}
+                  disabled={!amount || Number(amount) <= 0}
+                  style={{
+                    width: '100%', padding: '0.85rem',
+                    background: !amount || Number(amount) <= 0 ? 'rgba(255,255,255,0.06)' : `linear-gradient(135deg, ${ACCENT}, #B85A9A)`,
+                    border: 'none', borderRadius: 50,
+                    color: !amount || Number(amount) <= 0 ? 'rgba(255,255,255,0.3)' : 'white',
+                    fontSize: '0.78rem', fontWeight: 700,
+                    letterSpacing: '0.12em', textTransform: 'uppercase',
+                    cursor: !amount || Number(amount) <= 0 ? 'not-allowed' : 'pointer',
+                    transition: `background 200ms ${EASE}`,
+                  }}
+                >
+                  SWAP NOW
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

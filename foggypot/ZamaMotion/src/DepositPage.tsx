@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { BrowserProvider, Contract, formatUnits } from 'ethers'
 import { ArrowLeft, Search, TrendingUp, Users, Trophy, Zap, ChevronRight, Star, X, Lock } from 'lucide-react'
 import { ADDRESSES, TOKEN_ABI, VAULT_ABI } from './contracts'
+import { SwapModal } from './SwapModal'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
 const DURATION = 650
 
 const VAULTS = [
-  { id: 1, name: 'mUSDC Vault', token: 'USDC', bg: '#6EB5FF', drawPeriod: '5 min',  grandPrize: '700',    totalDeposits: '—',         tag: 'DEMO POOL',     drawPeriodLabel: '5 MIN DRAWS' },
+  { id: 1, name: 'cUSDC Vault', token: 'cUSDC', bg: '#6EB5FF', drawPeriod: '5 min',  grandPrize: '700',    totalDeposits: '—',         tag: 'DEMO POOL',     drawPeriodLabel: '5 MIN DRAWS' },
   { id: 2, name: 'DAI Vault',   token: 'DAI',  bg: '#F4845F', drawPeriod: '24 hr',  grandPrize: '6,244',  totalDeposits: '1,780,000', tag: 'HIGHEST APY',   drawPeriodLabel: 'DAILY DRAWS' },
   { id: 3, name: 'WETH Vault',  token: 'WETH', bg: '#6BBF7A', drawPeriod: '30 days',grandPrize: '12,845', totalDeposits: '3,220,000', tag: 'LARGEST PRIZE', drawPeriodLabel: 'MONTHLY DRAWS' },
   { id: 4, name: 'WBTC Vault',  token: 'WBTC', bg: '#E882B4', drawPeriod: '30 days',grandPrize: '14,735', totalDeposits: '4,100,000', tag: null,            drawPeriodLabel: 'MONTHLY DRAWS' },
@@ -823,6 +824,7 @@ export default function DepositPage() {
   const [wallet, setWallet] = useState<string | null>(null)
   const [walletError, setWalletError] = useState<string | null>(null)
   const [selectedVault, setSelectedVault] = useState<VaultType | null>(null)
+  const [swapOpen, setSwapOpen] = useState(false)
   const [totalDeposits, setTotalDeposits] = useState<string | null>(null)
 
   const fetchTotalDeposits = useCallback(async () => {
@@ -1089,14 +1091,35 @@ export default function DepositPage() {
           <h2 style={{ fontFamily: "'Anton', sans-serif", fontSize: '1.1rem', color: 'white', margin: 0, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             PRIZE VAULTS
           </h2>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-            borderRadius: 50, padding: '0.5rem 1rem',
-          }}>
-            <Search size={13} color="rgba(255,255,255,0.35)" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search vaults..."
-              style={{ background: 'transparent', border: 'none', outline: 'none', color: 'white', fontSize: '0.78rem', width: 150 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Swap button */}
+            <button
+              onClick={() => setSwapOpen(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'linear-gradient(135deg, rgba(232,130,180,0.15), rgba(110,181,255,0.1))',
+                border: '1.5px solid rgba(232,130,180,0.4)',
+                borderRadius: 50, padding: '0.5rem 1.1rem',
+                color: '#E882B4', fontSize: '0.72rem', fontWeight: 700,
+                letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer',
+                transition: `background 200ms ${EASE}, border-color 200ms ${EASE}`,
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, rgba(232,130,180,0.28), rgba(110,181,255,0.18))'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(232,130,180,0.7)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, rgba(232,130,180,0.15), rgba(110,181,255,0.1))'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(232,130,180,0.4)' }}
+            >
+              <span style={{ fontSize: '0.85rem' }}>⇄</span> SWAP mUSDC → cUSDC
+            </button>
+
+            {/* Search */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
+              borderRadius: 50, padding: '0.5rem 1rem',
+            }}>
+              <Search size={13} color="rgba(255,255,255,0.35)" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search vaults..."
+                style={{ background: 'transparent', border: 'none', outline: 'none', color: 'white', fontSize: '0.78rem', width: 150 }} />
+            </div>
           </div>
         </div>
 
@@ -1152,6 +1175,9 @@ export default function DepositPage() {
     )}
     {selectedVault && selectedVault.id !== 1 && (
       <PlainDepositModal vault={selectedVault} wallet={wallet} onClose={() => setSelectedVault(null)} />
+    )}
+    {swapOpen && (
+      <SwapModal wallet={wallet} onClose={() => setSwapOpen(false)} />
     )}
     </>
   )
