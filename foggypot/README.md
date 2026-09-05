@@ -12,20 +12,20 @@ nobody but you can see your balance, and nobody but a winner can see who won a d
 
 | Contract | Demo (5 min) | Standard (24 hr) | Long-horizon (30 day) |
 |---|---|---|---|
-| Ledger | `0x83C103C1B776BB10C509828292e978c56942A9a2` | `0x5A658A212178c04705fac7070509a9D513Ac731a` | `0xe6FC23c3E7B67F156b66e616FeB4E65640AA8708` |
-| Vault | `0x41e56f27F73D7ED7cB18c9c83115C9CfE9E91E18` | `0x85404082b579A3a2A2d559C9A0717B5D7D561848` | `0x255e8817a2703008dd309c308aca1b5bB09b199b` |
-| Reserve | `0x3E0De6122f9ca49271A4AD47aeb1027F52F80042` | `0xfeaebd59758F2Efb17C266dbb6d1B7ff69a38222` | `0xe3Dcec6547dB6F06fA6B5a21a2df4374E1Fe6160` |
-| PrizePool | `0xef3a6ED160c0816F5aF143c196476396DCEE071b` | `0x622772E98Fa1B09E0Ac9F8f921469957F4DA43fa` | `0x2982066eCC1c1E3203996416560b2E3DFDe7B3Eb` |
+| Ledger | `0xbbafE57B78c1e87fD34bA0FC6A72674c915Fa755` | `0x36edF2329bb1132AA50AA2e65Bec337fFC326875` | `0xDD2b66e37f3860De48d312cc4C1b9e0A0444fFe7` |
+| Vault | `0x347F1c2De1BDcC6B32a10ca55E04dbd83825A107` | `0xcc1BF04Ce9Ad5007F22C0134e1323Df4c590c2aD` | `0x62242007D27f52c1669798147b52Ad44a19656A4` |
+| Reserve | `0x2806a293fCd27FCC613f8300B457D9f58eC61e6C` | `0xA011aE90a79916de6Ea3E0E312e51ba088E1a6b5` | `0xe9E1dFBf326e9923F747671e0Eb323A1435E7eEA` |
+| PrizePool | `0x639B203CB350F0C8c3c4cdf291d72Ef824b907dA` | `0x5C22E6E30d8E12e9a050541BEfE0569E86C6769C` | `0x3424A6869bF652aD52F912Ba9BE943ccC9F8A4bB` |
 
-- **MockUSDC** (shared test token, all 3 pools): `0xe55fF5f4df166F68A5aE8f2Ddf6290cD7BCAf9F2`
-- **DrawKeeper** (shared, all 3 pools): `0x41e1321806179C27884aa6f04Ee5a632Ea1Ddf44`
+- **MockUSDC** (shared test token, all 3 pools): `0xEF2574b83A3E3DB6E23C10Fd4658fcCC4aE9b06A`
+- **DrawKeeper** (shared, all 3 pools): `0xd8eD5fE2A19Fe475788Fa5cA47fE3805aFd43b8B`
 
 ## Getting the test token
 
 `MockUSDC` has a public faucet, 1,000 mUSDC per call, 1-hour cooldown per address:
 
 ```solidity
-MockUSDC(0xe55fF5f4df166F68A5aE8f2Ddf6290cD7BCAf9F2).faucet()
+MockUSDC(0xEF2574b83A3E3DB6E23C10Fd4658fcCC4aE9b06A).faucet()
 ```
 
 ## Full cycle: deposit → draw → claim → withdraw
@@ -163,7 +163,7 @@ just a convention: it's enforced by the relayer/KMS, not by the frontend hiding 
 | 1 | `MockUSDC.faucet()` | Any user | — | 1,000 mUSDC, 1hr cooldown per address |
 | 2 | `MockUSDC.approve(vaultAddress, amount)` | User | `spender, amount` | Standard ERC-20 approval before depositing |
 | 3 | `Vault.deposit(amount)` | User | `uint64 amount` | Plaintext amount — no encryption needed (see §2) |
-| 4 | `Ledger.confidentialBalanceOf(address)` | Anyone (read) | `address` | Returns a ciphertext handle — decrypt with §3 to get a number |
+| 4 | `Ledger.confidentialBalanceOf(address)` / `Ledger.seeConfidentialBalance(address)` | Anyone (read) | `address` | Two names, identical behavior — both return the same ciphertext handle; decrypt with §3 to get a number |
 | 5 | `PrizePool.isDrawDue()` | Anyone (read) | — | `true` once the window has elapsed |
 | 6 | `PrizePool.runDraw()` | **Admin or registered keeper only** | — | Not user-callable. Reverts `"PrizePool: not admin or keeper"` otherwise |
 | 7 | `Vault.requestWithdraw()` | User | — | Snapshots + zeroes your balance, marks it publicly decryptable |
@@ -306,11 +306,19 @@ once per draw, full budget) — that's what lets `Vault.finalizeWithdraw` pay ou
 The encrypted mirror is bookkeeping for the confidentiality property; the real balance stays
 authoritative for solvency (see `runDraw`'s underfunded-reserve check).
 
-**Verified live on Sepolia** — draw tx
+**Verified live on Sepolia** (against a prior deployment of this same code — addresses have since
+been redeployed, mechanism unchanged) — draw tx
 [`0xc5fe9c0e...ec25a52`](https://sepolia.etherscan.io/tx/0xc5fe9c0e7be9cf15256202c3cbb4fc3f574837aa4e4d2571e2b40b073ec25a52):
 `Reserve.balance()` dropped exactly 100 mUSDC (real ERC-20 `Transfer` event, Reserve → Vault) while
 the encrypted credit went to whichever depositor the on-chain random draw picked — unrecoverable
 from the transaction alone.
+
+A second full live run confirmed the encrypted and real sides move in lockstep end to end: deposit
+50 → draw credits +80 (Grand + one Minor tier) → `Ledger` balance 130, decrypted via
+`seeConfidentialBalance()` and `confidentialBalanceOf()` identically → `Reserve.confidentialBalance()`
+and `Reserve.balance()` both dropped exactly 100 → withdrawal returns exactly 130 real mUSDC,
+matching the encrypted balance to the token. Every number reconciled exactly across both the
+encrypted and plaintext views, with no manual correction needed.
 
 ## Confidentiality & Leakage
 

@@ -109,6 +109,20 @@ contract FoggyPotTest is FhevmTest {
         assertEq(ledger.depositorsCount(), 1);
     }
 
+    /// @dev seeConfidentialBalance is an alias for confidentialBalanceOf — same handle, same ACL
+    /// grants, decryptable the same way.
+    function test_seeConfidentialBalanceMatchesConfidentialBalanceOf() public {
+        vm.prank(alice.addr);
+        vault.deposit(100 * 10 ** 6);
+
+        bytes32 viaOriginal = euint64.unwrap(ledger.confidentialBalanceOf(alice.addr));
+        bytes32 viaAlias = euint64.unwrap(ledger.seeConfidentialBalance(alice.addr));
+        assertEq(viaOriginal, viaAlias);
+
+        bytes memory sig = signUserDecrypt(alice.key, address(ledger));
+        assertEq(userDecrypt(viaAlias, alice.addr, address(ledger), sig), 100 * 10 ** 6);
+    }
+
     function test_multipleDepositsAccumulate() public {
         vm.prank(alice.addr);
         vault.deposit(100 * 10 ** 6);

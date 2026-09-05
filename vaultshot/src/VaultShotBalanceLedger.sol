@@ -5,11 +5,11 @@ import {FHE, euint64} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-/// @title FoggyPotBalanceLedger
-/// @notice Encrypted per-user deposit weight for one FoggyPot pool. Balance-at-draw-time only —
-/// no history, no TWAB. Only the pool's Vault (credits on deposit, debits on withdraw) and its
-/// PrizePool (credits prize winnings) may mutate balances.
-contract FoggyPotBalanceLedger is ZamaEthereumConfig, Ownable {
+/// @title VaultShotBalanceLedger
+/// @notice Encrypted per-user pool share for one VaultShot pool. Same role as FoggyPot's Ledger —
+/// tracks each depositor's share of the pool as a euint64, separate from the Vault's own cUSD
+/// custody balance. Only the pool's Vault and PrizePool may mutate balances.
+contract VaultShotBalanceLedger is ZamaEthereumConfig, Ownable {
     mapping(address => euint64) private _balances;
     mapping(address => bool) public isDepositor;
     address[] public depositors;
@@ -35,16 +35,37 @@ contract FoggyPotBalanceLedger is ZamaEthereumConfig, Ownable {
         emit AuthorizedContractsSet(vault_, prizePool_);
     }
 
+    // -----------------------------------------------------------------
+    // Balance readers — deliberately several named ways to fetch the same encrypted handle, all
+    // decryptable off-chain via the same EIP-712 userDecrypt flow (see client/src/vaultshot.ts).
+    // -----------------------------------------------------------------
+
     function confidentialBalanceOf(address account) external view returns (euint64) {
         return _balances[account];
     }
 
-    /// @notice Same as confidentialBalanceOf — returns `account`'s encrypted balance handle so a
-    /// frontend can pass it straight to the SDK's userDecrypt (EIP-712, only `account` itself can
-    /// actually decrypt it — see the ACL grants in _grant()). Provided under this name because it
-    /// was asked for explicitly; both functions return the exact same handle.
+    /// @notice Alias of confidentialBalanceOf: pass a wallet address, get back the encrypted
+    /// handle. Decrypt it off-chain with the SDK to see the plaintext value.
     function seeConfidentialBalance(address account) external view returns (euint64) {
         return _balances[account];
+    }
+
+    /// @notice Second alias, same handle.
+    function getEncryptedBalance(address account) external view returns (euint64) {
+        return _balances[account];
+    }
+
+    /// @notice Third alias, same handle.
+    function balanceOfEncrypted(address account) external view returns (euint64) {
+        return _balances[account];
+    }
+
+    /// @notice Batch reader — fetch several accounts' encrypted balances in one call.
+    function getEncryptedBalances(address[] calldata accounts) external view returns (euint64[] memory balances) {
+        balances = new euint64[](accounts.length);
+        for (uint256 i = 0; i < accounts.length; i++) {
+            balances[i] = _balances[accounts[i]];
+        }
     }
 
     function depositorsCount() external view returns (uint256) {
@@ -55,9 +76,13 @@ contract FoggyPotBalanceLedger is ZamaEthereumConfig, Ownable {
         return depositors;
     }
 
+    // -----------------------------------------------------------------
+    // Mutations — restricted to the pool's own Vault/PrizePool.
+    // -----------------------------------------------------------------
+
     /// @notice Adds `amount` to `account`'s encrypted balance, registering them as a depositor
-    /// on first credit. Grants decrypt permission on the new handle to the ledger, the account,
-    /// and both authorized contracts (so PrizePool can keep computing with it later).
+    /// on first credit. Grants decrypt permission on the new handle to the account and both
+    /// authorized contracts.
     function credit(address account, euint64 amount) external onlyAuthorized {
         if (!isDepositor[account]) {
             isDepositor[account] = true;
@@ -69,7 +94,7 @@ contract FoggyPotBalanceLedger is ZamaEthereumConfig, Ownable {
     }
 
     /// @notice Zeroes `account`'s encrypted balance and returns the previous value. Used by
-    /// Vault.requestWithdraw() to snapshot-and-lock the balance being withdrawn.
+    /// Vault.withdraw() to pull the full balance out in one shot.
     function debitAll(address account) external onlyAuthorized returns (euint64 previousBalance) {
         previousBalance = _balances[account];
         euint64 zero = FHE.asEuint64(0);
