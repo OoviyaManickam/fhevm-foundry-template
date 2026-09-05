@@ -5,7 +5,7 @@ import { ArrowLeft, Shield, Clock, Trophy, Activity, Eye, EyeOff, Wallet, Chevro
 import { initSDK, createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/web'
 import { ADDRESSES, VAULT_ABI, TOKEN_ABI, LEDGER_ABI } from './contracts'
 import { WithdrawModal } from './WithdrawModal'
-import { SwapModal } from './SwapModal'
+import { SimpleSwapModal } from './SimpleSwapModal'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
 const RPC  = import.meta.env.VITE_SEPOLIA_RPC_URL as string
@@ -280,23 +280,11 @@ export default function ProfilePage() {
         </span>
 
         {wallet ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={() => setSwapOpen(true)} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'linear-gradient(135deg, rgba(232,130,180,0.15), rgba(110,181,255,0.1))',
-              border: '1.5px solid rgba(232,130,180,0.4)',
-              borderRadius: 50, padding: '0.45rem 1rem',
-              color: '#E882B4', fontSize: '0.68rem', fontWeight: 700,
-              letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer',
-            }}>
-              <span style={{ fontSize: '0.85rem' }}>⇄</span> SWAP
-            </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(107,191,122,0.1)', border: '1.5px solid rgba(107,191,122,0.3)', borderRadius: 50, padding: '0.45rem 1rem' }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#6BBF7A', boxShadow: '0 0 8px #6BBF7A' }} />
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6BBF7A', letterSpacing: '0.08em', fontFamily: 'monospace' }}>
-                {wallet.slice(0, 6)}...{wallet.slice(-4)}
-              </span>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(107,191,122,0.1)', border: '1.5px solid rgba(107,191,122,0.3)', borderRadius: 50, padding: '0.45rem 1rem' }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#6BBF7A', boxShadow: '0 0 8px #6BBF7A' }} />
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6BBF7A', letterSpacing: '0.08em', fontFamily: 'monospace' }}>
+              {wallet.slice(0, 6)}...{wallet.slice(-4)}
+            </span>
           </div>
         ) : (
           <button onClick={connectWallet} style={{
@@ -346,8 +334,20 @@ export default function ProfilePage() {
               <div style={{ fontSize: '0.62rem', fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.18em', textTransform: 'uppercase', marginBottom: 6 }}>
                 WALLET
               </div>
-              <div style={{ fontFamily: 'monospace', fontSize: '1rem', color: 'white', letterSpacing: '0.04em' }}>
-                {wallet}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontFamily: 'monospace', fontSize: '1rem', color: 'white', letterSpacing: '0.04em' }}>
+                  {wallet}
+                </div>
+                <button onClick={() => setSwapOpen(true)} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'linear-gradient(135deg, rgba(232,130,180,0.15), rgba(110,181,255,0.1))',
+                  border: '1.5px solid rgba(232,130,180,0.4)',
+                  borderRadius: 50, padding: '0.38rem 0.9rem',
+                  color: '#E882B4', fontSize: '0.68rem', fontWeight: 700,
+                  letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer', flexShrink: 0, marginLeft: 16,
+                }}>
+                  <span style={{ fontSize: '0.85rem' }}>⇄</span> SWAP
+                </button>
               </div>
             </div>
 
@@ -746,7 +746,7 @@ export default function ProfilePage() {
       />
     )}
     {swapOpen && (
-      <SwapModal wallet={wallet} onClose={() => setSwapOpen(false)} />
+      <SimpleSwapModal wallet={wallet} onClose={() => setSwapOpen(false)} />
     )}
     </>
   )
