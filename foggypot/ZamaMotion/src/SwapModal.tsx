@@ -81,7 +81,7 @@ export function SwapModal({
         position: 'fixed',
         bottom: '83vh',
         left: '50%',
-        marginLeft: 390 / 2 - 40,
+        marginLeft: 390 / 2 - 120,
         width: 230,
         opacity: bubbleVisible ? 1 : 0,
         transform: bubbleVisible ? 'scale(1)' : 'scale(0.4)',
