@@ -64,7 +64,7 @@ export function SwapModal({
           bottom: 0,
           left: '50%',
           /* card is 390px wide, figurine sits just off the right edge */
-          marginLeft: 390 / 2 - 30,
+          marginLeft: 390 / 2 - 120,
           height: '88vh',
           width: 'auto',
           filter: 'drop-shadow(-8px 0 40px rgba(110,181,255,0.4))',
