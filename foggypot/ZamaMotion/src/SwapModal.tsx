@@ -121,7 +121,6 @@ export function SwapModal({
           }}>
             cUSDC is the confidential version of mUSDC. Your vault balance will be fully encrypted using <span style={{ color: '#6EB5FF', fontWeight: 600 }}>Zama FHE</span>.
           </div>
-          </p>
         </div>
         {/* Tail dots — pointing down-left toward figurine head */}
         {[
