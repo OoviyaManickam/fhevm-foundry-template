@@ -109,4 +109,25 @@ contract VaultShotTest is FhevmTest {
     {
         return userDecrypt(handle, userAddress, contractAddress, sig);
     }
+
+    // ---------------------------------------------------------------------
+    // Wrap
+    // ---------------------------------------------------------------------
+
+    function test_wrapMintsConfidentialBalance() public {
+        Account memory dave = makeAccount("dave");
+        vm.prank(admin.addr);
+        usdc.adminMint(dave.addr, 200 * 10 ** 6);
+
+        vm.startPrank(dave.addr);
+        usdc.approve(address(cusd), 200 * 10 ** 6);
+        cusd.wrap(dave.addr, 200 * 10 ** 6);
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(address(cusd)), 200 * 10 ** 6 + RESERVE_FUNDING + 3_000 * 10 ** 6);
+
+        bytes32 handle = euint64.unwrap(cusd.confidentialBalanceOf(dave.addr));
+        bytes memory sig = signUserDecrypt(dave.key, address(cusd));
+        assertEq(userDecrypt(handle, dave.addr, address(cusd), sig), 200 * 10 ** 6);
+    }
 }
