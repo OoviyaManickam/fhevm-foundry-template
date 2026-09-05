@@ -65,6 +65,9 @@ contract VaultShotVault is ZamaEthereumConfig, Ownable {
     function deposit(externalEuint64 encryptedAmount, bytes calldata inputProof) external {
         euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
         FHE.allowTransient(amount, address(this));
+        // The token's own _update performs FHE arithmetic on `amount` in its own execution
+        // context, so the token contract itself needs ACL access to it too — not just the caller.
+        FHE.allowTransient(amount, address(token));
 
         // Pull the confidential tokens in — a genuine confidentialTransferFrom, no plaintext
         // amount anywhere in this call.
@@ -94,6 +97,9 @@ contract VaultShotVault is ZamaEthereumConfig, Ownable {
         FHE.allow(newTotal, prizePool);
         _totalDeposits = newTotal;
 
+        // Same reasoning as deposit(): the token needs its own ACL access to `amount` for the FHE
+        // arithmetic inside its _update, in addition to whatever Ledger's _grant already gave us.
+        FHE.allowTransient(amount, address(token));
         token.confidentialTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender);
     }
