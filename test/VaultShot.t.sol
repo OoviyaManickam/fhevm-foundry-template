@@ -130,4 +130,73 @@ contract VaultShotTest is FhevmTest {
         bytes memory sig = signUserDecrypt(dave.key, address(cusd));
         assertEq(userDecrypt(handle, dave.addr, address(cusd), sig), 200 * 10 ** 6);
     }
+
+    // ---------------------------------------------------------------------
+    // Deposit
+    // ---------------------------------------------------------------------
+
+    function test_depositCreditsEncryptedBalance() public {
+        _deposit(alice, 100 * 10 ** 6);
+
+        assertEq(_decryptLedgerBalance(alice), 100 * 10 ** 6);
+        assertEq(ledger.depositorsCount(), 1);
+        assertEq(_decryptTokenBalance(alice), 900 * 10 ** 6);
+    }
+
+    /// @dev All four Ledger balance aliases must return the exact same handle.
+    function test_allBalanceAliasesReturnSameHandle() public {
+        _deposit(alice, 100 * 10 ** 6);
+
+        bytes32 h1 = euint64.unwrap(ledger.confidentialBalanceOf(alice.addr));
+        bytes32 h2 = euint64.unwrap(ledger.seeConfidentialBalance(alice.addr));
+        bytes32 h3 = euint64.unwrap(ledger.getEncryptedBalance(alice.addr));
+        bytes32 h4 = euint64.unwrap(ledger.balanceOfEncrypted(alice.addr));
+        assertEq(h1, h2);
+        assertEq(h1, h3);
+        assertEq(h1, h4);
+
+        bytes memory sig = signUserDecrypt(alice.key, address(ledger));
+        assertEq(userDecrypt(h4, alice.addr, address(ledger), sig), 100 * 10 ** 6);
+    }
+
+    function test_batchEncryptedBalancesReader() public {
+        _deposit(alice, 100 * 10 ** 6);
+        _deposit(bob, 50 * 10 ** 6);
+
+        address[] memory accounts = new address[](2);
+        accounts[0] = alice.addr;
+        accounts[1] = bob.addr;
+        euint64[] memory balances = ledger.getEncryptedBalances(accounts);
+
+        bytes memory aliceSig = signUserDecrypt(alice.key, address(ledger));
+        bytes memory bobSig = signUserDecrypt(bob.key, address(ledger));
+        assertEq(userDecrypt(euint64.unwrap(balances[0]), alice.addr, address(ledger), aliceSig), 100 * 10 ** 6);
+        assertEq(userDecrypt(euint64.unwrap(balances[1]), bob.addr, address(ledger), bobSig), 50 * 10 ** 6);
+    }
+
+    function test_multipleDepositsAccumulate() public {
+        _deposit(alice, 100 * 10 ** 6);
+        _deposit(alice, 50 * 10 ** 6);
+
+        assertEq(_decryptLedgerBalance(alice), 150 * 10 ** 6);
+        assertEq(ledger.depositorsCount(), 1);
+    }
+
+    function test_depositRevertsWithoutOperatorApproval() public {
+        address dave = makeAddr("dave");
+        vm.prank(admin.addr);
+        usdc.adminMint(dave, 100 * 10 ** 6);
+        vm.startPrank(dave);
+        usdc.approve(address(cusd), 100 * 10 ** 6);
+        cusd.wrap(dave, 100 * 10 ** 6);
+        vm.stopPrank();
+        // dave never set the vault as an operator.
+
+        (externalEuint64 handle, bytes memory proof) = encryptUint64(100 * 10 ** 6, dave, address(vault));
+        vm.expectRevert(
+            abi.encodeWithSignature("ERC7984UnauthorizedSpender(address,address)", dave, address(vault))
+        );
+        vm.prank(dave);
+        vault.deposit(handle, proof);
+    }
 }
