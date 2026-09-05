@@ -187,6 +187,32 @@ async function main() {
 
   const OPERATOR_UNTIL = 281_474_976_710_655n; // type(uint48).max
 
+  section("FAUCET + WRAP — plaintext USDC in, confidential cUSD out (the wrap boundary)");
+  {
+    await tryFaucet(usdc, alice, "Alice");
+    await tryFaucet(usdc, bob, "Bob");
+
+    for (const [user, label] of [
+      [alice, "Alice"],
+      [bob, "Bob"],
+    ] as const) {
+      const usdcBalance = (await usdc.balanceOf(user.address)) as bigint;
+      if (usdcBalance === 0n) {
+        console.log(`  ${label} has no mUSDC to wrap — skipping wrap for this run.`);
+        continue;
+      }
+      let tx = await usdc.connect(user).getFunction("approve")(CUSD_ADDRESS, usdcBalance);
+      await tx.wait();
+      tx = await cusd.connect(user).getFunction("wrap")(user.address, usdcBalance);
+      console.log(`  ${label} wrap tx:`, tx.hash);
+      await tx.wait();
+
+      tx = await cusd.connect(user).getFunction("setOperator")(VAULT_ADDRESS, OPERATOR_UNTIL);
+      console.log(`  ${label} setOperator(Vault) tx:`, tx.hash);
+      await tx.wait();
+    }
+  }
+
 }
 
 main().catch((err) => {
