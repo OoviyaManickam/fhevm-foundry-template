@@ -26,10 +26,17 @@ contract DeployVaultShot is Script {
 
     function run() external {
         vm.startBroadcast();
-        address admin = msg.sender;
 
         MockUSDC token = new MockUSDC();
         console.log("MockUSDC:", address(token));
+
+        // NOTE: reading msg.sender directly in run()'s own call frame would return Foundry's
+        // internal script-harness address, not the broadcasting wallet — vm.startBroadcast() only
+        // rewrites the sender seen by *nested* calls/creations from this point on, not a plain
+        // variable read in the frame that's already executing. MockUSDC's constructor reads
+        // msg.sender from inside its own (nested, broadcasted) CREATE, so its resolved owner is
+        // the real deployer — reuse that instead of re-deriving admin independently.
+        address admin = token.owner();
 
         VaultShotToken cusd = new VaultShotToken(token);
         console.log("VaultShotToken (cUSD):", address(cusd));
