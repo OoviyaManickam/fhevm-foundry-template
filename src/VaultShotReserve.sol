@@ -57,6 +57,9 @@ contract VaultShotReserve is ZamaEthereumConfig, Ownable {
     {
         euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
         FHE.allowTransient(amount, address(this));
+        // The token's own _update performs FHE arithmetic on `amount` in its own execution
+        // context, so the token contract itself needs ACL access to it too — not just Reserve.
+        FHE.allowTransient(amount, address(token));
         token.confidentialTransferFrom(msg.sender, address(this), amount);
 
         availableBudget += plaintextAmount;
@@ -73,6 +76,9 @@ contract VaultShotReserve is ZamaEthereumConfig, Ownable {
 
         released = FHE.asEuint64(amount);
         FHE.allowTransient(released, address(this));
+        // Same reasoning as fund(): the token needs its own ACL access to `released` for the FHE
+        // arithmetic inside its _update.
+        FHE.allowTransient(released, address(token));
         token.confidentialTransfer(to, released);
         FHE.allowTransient(released, msg.sender);
 
