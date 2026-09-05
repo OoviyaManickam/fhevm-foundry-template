@@ -82,7 +82,7 @@ export function SwapModal({
         bottom: '74vh',
         left: '50%',
         marginLeft: 390 / 2 - 10,
-        width: 210,
+        width: 230,
         opacity: bubbleVisible ? 1 : 0,
         transform: bubbleVisible ? 'scale(1)' : 'scale(0.4)',
         transformOrigin: 'bottom left',
@@ -110,6 +110,17 @@ export function SwapModal({
             <span style={{ fontSize: '0.62rem', color: '#6EB5FF', fontWeight: 500 }}>
               {'wrap it → ERC-7984\nconfidential token 🔒'}
             </span>
+          </p>
+          <div style={{
+            marginTop: 10,
+            padding: '8px 10px',
+            background: 'rgba(110,181,255,0.07)',
+            border: '1px solid rgba(110,181,255,0.2)',
+            borderRadius: 10,
+            fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.55, textAlign: 'left',
+          }}>
+            cUSDC is the confidential version of mUSDC. Your vault balance will be fully encrypted using <span style={{ color: '#6EB5FF', fontWeight: 600 }}>Zama FHE</span>.
+          </div>
           </p>
         </div>
         {/* Tail dots — pointing down-left toward figurine head */}
@@ -301,18 +312,6 @@ export function SwapModal({
                   </span>
                 </div>
               )}
-
-              {/* Info banner */}
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-                background: `${ACCENT}11`, border: `1px solid ${ACCENT}33`,
-                borderRadius: 10, padding: '0.7rem 0.85rem', marginBottom: '1.5rem',
-              }}>
-                <span style={{ fontSize: '0.9rem', flexShrink: 0 }}>🔒</span>
-                <span style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-                  cUSDC is the confidential version of mUSDC. Your vault balance will be fully encrypted using Zama FHE.
-                </span>
-              </div>
 
               {/* Swap button */}
               {!wallet ? (
