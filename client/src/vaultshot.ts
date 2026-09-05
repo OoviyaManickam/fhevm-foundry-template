@@ -256,6 +256,25 @@ async function main() {
     await tx.wait();
   }
 
+  section("BALANCES — after deposit, via every Ledger decrypt-helper alias");
+  {
+    const aliceHandleA = (await ledger.confidentialBalanceOf(alice.address)) as string;
+    const aliceHandleB = (await ledger.seeConfidentialBalance(alice.address)) as string;
+    const aliceHandleC = (await ledger.getEncryptedBalance(alice.address)) as string;
+    const aliceHandleD = (await ledger.balanceOfEncrypted(alice.address)) as string;
+    console.log(
+      "  Alias handles match:",
+      aliceHandleA === aliceHandleB && aliceHandleB === aliceHandleC && aliceHandleC === aliceHandleD,
+    );
+
+    await seeAndDecryptBalance(instance, ledger, alice, "Alice");
+    await seeAndDecryptBalance(instance, ledger, bob, "Bob  ");
+
+    const batch = (await ledger.getEncryptedBalances([alice.address, bob.address])) as string[];
+    const aliceBatch = await decryptEuint64(instance, batch[0], LEDGER_ADDRESS, alice);
+    console.log("  Batch reader — Alice:", fmt(aliceBatch));
+  }
+
 }
 
 main().catch((err) => {
