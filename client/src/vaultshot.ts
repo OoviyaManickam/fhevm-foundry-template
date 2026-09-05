@@ -213,6 +213,28 @@ async function main() {
     }
   }
 
+  section("RESERVE FUND — admin funds the prize reserve with confidential cUSD (skips if already funded)");
+  {
+    const currentBudget = (await reserve.availableBudget()) as bigint;
+    if (currentBudget >= RESERVE_FUNDING) {
+      console.log(`  Reserve already funded (availableBudget = ${fmt(currentBudget)}) — skipping.`);
+    } else {
+      const cusdBalance = (await cusd.confidentialBalanceOf(admin.address)) as string;
+      if (cusdBalance === ZeroHash) {
+        console.log("  Admin has no cUSD to fund the reserve with — run the deploy script first.");
+      } else {
+        let tx = await cusd.connect(admin).getFunction("setOperator")(RESERVE_ADDRESS, OPERATOR_UNTIL);
+        await tx.wait();
+
+        const { handle, proof } = await encryptAmount(instance, RESERVE_ADDRESS, admin.address, RESERVE_FUNDING);
+        tx = await reserve.connect(admin).getFunction("fund")(handle, proof, RESERVE_FUNDING);
+        console.log("  fund tx:", tx.hash);
+        await tx.wait();
+        console.log(`  Reserve funded with ${fmt(RESERVE_FUNDING)}.`);
+      }
+    }
+  }
+
 }
 
 main().catch((err) => {
