@@ -235,6 +235,27 @@ async function main() {
     }
   }
 
+  section("DEPOSIT — confidential transfer into the Vault, real encrypted input via the SDK");
+  {
+    const aliceAmount = 100n * 10n ** 6n;
+    const bobAmount = 50n * 10n ** 6n;
+
+    const { handle: aliceHandle, proof: aliceProof } = await encryptAmount(
+      instance,
+      VAULT_ADDRESS,
+      alice.address,
+      aliceAmount,
+    );
+    let tx = await vault.connect(alice).getFunction("deposit")(aliceHandle, aliceProof);
+    console.log("  Alice deposit tx:", tx.hash);
+    await tx.wait();
+
+    const { handle: bobHandle, proof: bobProof } = await encryptAmount(instance, VAULT_ADDRESS, bob.address, bobAmount);
+    tx = await vault.connect(bob).getFunction("deposit")(bobHandle, bobProof);
+    console.log("  Bob deposit tx:  ", tx.hash);
+    await tx.wait();
+  }
+
 }
 
 main().catch((err) => {
