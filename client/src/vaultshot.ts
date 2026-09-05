@@ -310,6 +310,22 @@ async function main() {
     }
   }
 
+  section("BALANCES — after draw (winners will show a higher balance)");
+  await seeAndDecryptBalance(instance, ledger, alice, "Alice");
+  await seeAndDecryptBalance(instance, ledger, bob, "Bob  ");
+
+  section("WITHDRAW — Alice withdraws her full balance, principal plus any winnings, single tx");
+  {
+    const balanceBefore = (await usdc.balanceOf(alice.address)) as bigint;
+    const tx = await vault.connect(alice).getFunction("withdraw")();
+    console.log("  withdraw tx:", tx.hash);
+    await tx.wait();
+
+    const cusdBalanceAfter = (await cusd.confidentialBalanceOf(alice.address)) as string;
+    const cusdAfter = await decryptEuint64(instance, cusdBalanceAfter, CUSD_ADDRESS, alice);
+    console.log("  Alice cUSD balance after withdraw:", fmt(cusdAfter));
+    console.log("  (mUSDC balance unchanged at", fmt(balanceBefore), "— withdraw returns cUSD; unwrap() is a separate, optional step.)");
+  }
 }
 
 main().catch((err) => {
