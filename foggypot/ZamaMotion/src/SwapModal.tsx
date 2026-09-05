@@ -55,34 +55,33 @@ export function SwapModal({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
-      {/* Centering wrapper — holds modal card + figurine together */}
-      <div style={{ position: 'relative', pointerEvents: 'none' }}>
+      {/* Blue figurine — fixed to viewport, right-aligned alongside modal */}
+      <img
+        src="/figurine-blue-boy.png"
+        alt=""
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: '50%',
+          /* card is 390px wide, figurine sits just off the right edge */
+          marginLeft: 390 / 2 - 30,
+          height: '88vh',
+          width: 'auto',
+          filter: 'drop-shadow(-8px 0 40px rgba(110,181,255,0.4))',
+          opacity: bubbleVisible ? 1 : 0,
+          transform: bubbleVisible ? 'translateY(0)' : 'translateY(50px)',
+          transition: `opacity 800ms ${EASE}, transform 800ms cubic-bezier(0.34,1.2,0.64,1)`,
+          pointerEvents: 'none',
+          zIndex: 101,
+        }}
+      />
 
-        {/* Blue figurine — positioned to the right, leaning on the card */}
-        <img
-          src="/figurine-blue-boy.png"
-          alt=""
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            right: -145,
-            height: '85vh',
-            width: 'auto',
-            mixBlendMode: 'multiply',
-            filter: 'drop-shadow(-8px 0 40px rgba(110,181,255,0.35))',
-            opacity: bubbleVisible ? 1 : 0,
-            transform: bubbleVisible ? 'translateY(0)' : 'translateY(40px)',
-            transition: `opacity 800ms ${EASE}, transform 800ms cubic-bezier(0.34,1.2,0.64,1)`,
-            pointerEvents: 'none',
-          }}
-        />
-
-        {/* Modal card */}
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'relative',
-            width: 390, borderRadius: 18,
+      {/* Modal card — centred */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'relative',
+          width: 390, borderRadius: 18,
             background: '#13131A', border: `1.5px solid ${ACCENT}44`,
             padding: '1.5rem', zIndex: 10,
             boxShadow: '0 20px 40px -10px rgba(0,0,0,0.6)',
@@ -289,7 +288,6 @@ export function SwapModal({
             </>
           )}
         </div>
-      </div>
     </div>
   )
 }
