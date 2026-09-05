@@ -76,6 +76,58 @@ export function SwapModal({
         }}
       />
 
+      {/* Thought bubble above figurine — anchored same horizontal position */}
+      <div style={{
+        position: 'fixed',
+        bottom: '74vh',
+        left: '50%',
+        marginLeft: 390 / 2 - 10,
+        width: 210,
+        opacity: bubbleVisible ? 1 : 0,
+        transform: bubbleVisible ? 'scale(1)' : 'scale(0.4)',
+        transformOrigin: 'bottom left',
+        transition: `opacity 700ms ${EASE} 300ms, transform 700ms cubic-bezier(0.34,1.6,0.64,1) 300ms`,
+        pointerEvents: 'none',
+        zIndex: 102,
+      }}>
+        {/* Bubble body */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(25,25,38,0.97) 0%, rgba(18,18,30,0.97) 100%)',
+          border: '1.5px solid rgba(255,255,255,0.15)',
+          borderRadius: 18, padding: '14px 16px',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)',
+          position: 'relative',
+        }}>
+          {/* Corner accents */}
+          <div style={{ position: 'absolute', top: -1, left: -1, width: 32, height: 32, borderTop: '2px solid #6EB5FF88', borderLeft: '2px solid #6EB5FF88', borderRadius: '18px 0 0 0' }} />
+          <div style={{ position: 'absolute', bottom: -1, right: -1, width: 24, height: 24, borderBottom: '2px solid #6EB5FF44', borderRight: '2px solid #6EB5FF44', borderRadius: '0 0 18px 0' }} />
+          <p style={{
+            margin: 0, fontSize: '0.72rem', fontWeight: 600, lineHeight: 1.55,
+            letterSpacing: '0.01em', textAlign: 'center', whiteSpace: 'pre-line',
+            color: 'white',
+          }}>
+            {'need mUSDC? 👇\nget test tokens here!\n'}
+            <span style={{ fontSize: '0.62rem', color: '#6EB5FF', fontWeight: 500 }}>
+              {'wrap it → ERC-7984\nconfidential token 🔒'}
+            </span>
+          </p>
+        </div>
+        {/* Tail dots — pointing down-left toward figurine head */}
+        {[
+          { size: 12, bottom: -16, left: '18%' },
+          { size: 8,  bottom: -26, left: '12%' },
+          { size: 5,  bottom: -34, left: '7%'  },
+        ].map((d, i) => (
+          <div key={i} style={{
+            position: 'absolute',
+            bottom: d.bottom, left: d.left,
+            width: d.size, height: d.size, borderRadius: '50%',
+            background: 'rgba(25,25,38,0.97)',
+            border: '1.5px solid rgba(255,255,255,0.15)',
+          }} />
+        ))}
+      </div>
+
       {/* Modal card — centred */}
       <div
         onClick={e => e.stopPropagation()}
