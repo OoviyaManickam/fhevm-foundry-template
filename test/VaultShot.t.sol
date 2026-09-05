@@ -389,4 +389,51 @@ contract VaultShotTest is FhevmTest {
         vm.expectRevert(bytes("Reserve: not prize pool"));
         reserve.releaseTo(alice.addr, 10 * 10 ** 6);
     }
+
+    // ---------------------------------------------------------------------
+    // Access control
+    // ---------------------------------------------------------------------
+
+    function test_onlyAdminOrKeeperCanRequestDraw() public {
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        vm.prank(alice.addr);
+        vm.expectRevert(bytes("PrizePool: not admin or keeper"));
+        prizePool.requestDraw();
+    }
+
+    function test_onlyPrizePoolCanMarkTotalForDraw() public {
+        vm.prank(alice.addr);
+        vm.expectRevert(bytes("Vault: not prize pool"));
+        vault.markTotalForDraw();
+    }
+
+    function test_onlyAccountOwnerCanDecryptTheirBalance() public {
+        _deposit(alice, 100 * 10 ** 6);
+
+        bytes32 aliceHandle = euint64.unwrap(ledger.confidentialBalanceOf(alice.addr));
+        bytes memory bobSignature = signUserDecrypt(bob.key, address(ledger));
+
+        vm.expectRevert(
+            abi.encodeWithSignature("UserNotAuthorizedForDecrypt(bytes32,address)", aliceHandle, bob.addr)
+        );
+        this._userDecryptExternal(aliceHandle, bob.addr, address(ledger), bobSignature);
+    }
+
+    // ---------------------------------------------------------------------
+    // Chainlink Automation keeper (phase 1 only)
+    // ---------------------------------------------------------------------
+
+    function test_keeperCheckAndPerformUpkeepTriggersRequestDrawOnly() public {
+        _deposit(alice, 100 * 10 ** 6);
+
+        (bool needed,) = keeper.checkUpkeep("");
+        assertFalse(needed);
+
+        vm.warp(block.timestamp + DRAW_PERIOD);
+        (bool neededNow, bytes memory performData) = keeper.checkUpkeep("");
+        assertTrue(neededNow);
+
+        keeper.performUpkeep(performData);
+        assertEq(uint256(prizePool.stage()), 1); // TotalRequested — phase 2 is not the keeper's job
+    }
 }
