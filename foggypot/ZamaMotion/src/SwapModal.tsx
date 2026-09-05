@@ -79,9 +79,9 @@ export function SwapModal({
       {/* Thought bubble above figurine — anchored same horizontal position */}
       <div style={{
         position: 'fixed',
-        bottom: '88vh',
+        bottom: '83vh',
         left: '50%',
-        marginLeft: 390 / 2 - 10,
+        marginLeft: 390 / 2 - 40,
         width: 230,
         opacity: bubbleVisible ? 1 : 0,
         transform: bubbleVisible ? 'scale(1)' : 'scale(0.4)',
