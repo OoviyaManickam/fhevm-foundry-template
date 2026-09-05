@@ -39,6 +39,14 @@ contract FoggyPotBalanceLedger is ZamaEthereumConfig, Ownable {
         return _balances[account];
     }
 
+    /// @notice Same as confidentialBalanceOf — returns `account`'s encrypted balance handle so a
+    /// frontend can pass it straight to the SDK's userDecrypt (EIP-712, only `account` itself can
+    /// actually decrypt it — see the ACL grants in _grant()). Provided under this name because it
+    /// was asked for explicitly; both functions return the exact same handle.
+    function seeConfidentialBalance(address account) external view returns (euint64) {
+        return _balances[account];
+    }
+
     function depositorsCount() external view returns (uint256) {
         return depositors.length;
     }
