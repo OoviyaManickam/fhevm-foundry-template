@@ -133,7 +133,7 @@ export function SwapModal({
           bottom: 0,
           left: '50%',
           /* card is 390px wide, figurine sits just off the right edge */
-          marginLeft: 390 / 2 - 210,
+          marginLeft: 390 / 2 - 260,
           height: '88vh',
           width: 'auto',
           filter: 'drop-shadow(-8px 0 40px rgba(110,181,255,0.4))',
@@ -148,10 +148,10 @@ export function SwapModal({
       {/* Thought bubble above figurine — anchored same horizontal position */}
       <div style={{
         position: 'fixed',
-        bottom: '80vh',
+        bottom: '84vh',
         left: '50%',
-        marginLeft: 390 / 2 - 190,
-        width: 230,
+        marginLeft: 390 / 2 - 230,
+        width: 280,
         opacity: bubbleVisible ? 1 : 0,
         transform: bubbleVisible ? 'scale(1)' : 'scale(0.4)',
         transformOrigin: 'bottom left',
@@ -212,16 +212,6 @@ export function SwapModal({
               {faucetState === 'loading' ? 'CLAIMING...' : faucetState === 'done' ? '✓ CLAIMED!' : faucetState === 'cooldown' ? 'ON COOLDOWN' : 'GET mUSDC'}
             </button>
           </div>
-
-          <div style={{
-            marginTop: 10, padding: '7px 10px',
-            background: 'rgba(110,181,255,0.07)',
-            border: '1px solid rgba(110,181,255,0.2)',
-            borderRadius: 10,
-            fontSize: '0.58rem', color: 'rgba(255,255,255,0.45)', lineHeight: 1.55,
-          }}>
-            cUSDC is the confidential version of mUSDC. Fully encrypted via <span style={{ color: '#6EB5FF', fontWeight: 600 }}>Zama FHE</span>.
-          </div>
         </div>
         {/* Tail dots — descending toward figurine head */}
         {[
@@ -244,6 +234,8 @@ export function SwapModal({
         onClick={e => e.stopPropagation()}
         style={{
           position: 'relative',
+          marginLeft: '-80px',
+          marginTop: '80px',
           width: 390, borderRadius: 18,
             background: '#13131A', border: `1.5px solid ${ACCENT}44`,
             padding: '1.5rem', zIndex: 10,
@@ -414,6 +406,16 @@ export function SwapModal({
               )}
 
               {/* Swap button */}
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                background: `${ACCENT}11`, border: `1px solid ${ACCENT}33`,
+                borderRadius: 10, padding: '0.7rem 0.85rem', marginBottom: '1.25rem',
+              }}>
+                <span style={{ fontSize: '0.9rem', flexShrink: 0 }}>🔒</span>
+                <span style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
+                  cUSDC is the confidential version of mUSDC. Fully encrypted via <span style={{ color: '#6EB5FF', fontWeight: 600 }}>Zama FHE</span>.
+                </span>
+              </div>
               {!wallet ? (
                 <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', padding: '0.5rem 0' }}>
                   Connect your wallet to swap

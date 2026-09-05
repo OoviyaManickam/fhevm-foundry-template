@@ -279,7 +279,6 @@ function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultTyp
   const [step, setStep] = useState<'input' | 'approving' | 'depositing' | 'done'>('input')
   const [bubbleVisible, setBubbleVisible] = useState(false)
   const [tokenBalance, setTokenBalance] = useState<string | null>(null)
-  const [faucetState, setFaucetState] = useState<'idle' | 'loading' | 'done' | 'cooldown'>('idle')
 
   useEffect(() => {
     if (!wallet) return
@@ -288,39 +287,12 @@ function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultTyp
     token.balanceOf(wallet).then((bal: bigint) => {
       setTokenBalance(formatUnits(bal, 6))
     }).catch(() => {})
-  }, [wallet, faucetState])
+  }, [wallet])
 
   useEffect(() => {
     const t = setTimeout(() => setBubbleVisible(true), 400)
     return () => clearTimeout(t)
   }, [])
-
-  // Calling faucet() mints 1000 mUSDC to the user.
-  // Uses raw eth_sendTransaction + nonce polling to avoid MetaMask 4100 bug with BrowserProvider.
-  const handleFaucet = async () => {
-    if (!wallet || faucetState === 'loading') return
-    setFaucetState('loading')
-    const eth = (window as any).ethereum
-    try {
-      // faucet() selector = keccak256("faucet()")[0:4] = 0x7b0472f0
-      const txHash = await sendTx(eth, {
-        from: wallet,
-        to: ADDRESSES.token,
-        data: '0x7b0472f0',
-        gas: '0x186a0',
-      })
-      if (txHash) await waitForReceipt(eth, txHash)
-      setFaucetState('done')
-    } catch (e: any) {
-      const msg = e?.message ?? e?.reason ?? e?.info?.error?.message ?? JSON.stringify(e)
-      if (msg.toLowerCase().includes('cooldown')) {
-        setFaucetState('cooldown')
-      } else {
-        setFaucetState('idle')
-        console.error('faucet error', e)
-      }
-    }
-  }
 
   const onBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose()
@@ -430,42 +402,10 @@ function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultTyp
           <div style={{ position: 'absolute', top: -1, left: -1, width: 40, height: 40, borderTop: '2px solid #F4845F88', borderLeft: '2px solid #F4845F88', borderRadius: '24px 0 0 0' }} />
           <div style={{ position: 'absolute', bottom: -1, right: -1, width: 30, height: 30, borderBottom: '2px solid #6EB5FF44', borderRight: '2px solid #6EB5FF44', borderRadius: '0 0 24px 0' }} />
           <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 600, lineHeight: 1.5, letterSpacing: '0.01em', textAlign: 'center', whiteSpace: 'pre-line',
-            color: faucetState === 'done' ? '#6BBF7A' : faucetState === 'loading' ? '#F4845F' : 'white',
-            transition: 'color 300ms ease',
+            color: 'white',
           }}>
-            {faucetState === 'loading'
-              ? '⏳ getting your tokens...\nhang tight!'
-              : faucetState === 'done'
-              ? `✅ 1000 mUSDC dropped!\nnow go deposit 🔒`
-              : faucetState === 'cooldown'
-              ? '⏱ already claimed!\ncome back later'
-              : 'wanna try it out? 👀\nget some mUSDC tokens\nand give it a spin!'}
+            {'Deposit your cUSDC here 🔒\nyour principal stays safe\n& fully encrypted. always.'}
           </p>
-          {tokenBalance !== null && (
-            <div style={{ fontSize: '0.62rem', textAlign: 'center', marginTop: 6,
-              color: faucetState === 'done' ? 'rgba(107,191,122,0.7)' : 'rgba(255,255,255,0.45)',
-            }}>
-              Balance: {Number(tokenBalance).toFixed(2)} mUSDC
-            </div>
-          )}
-          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
-            <button
-              onClick={handleFaucet}
-              disabled={faucetState === 'loading'}
-              style={{
-                background: 'rgba(244,132,95,0.2)',
-                border: '1px solid rgba(244,132,95,0.45)', borderRadius: 50,
-                padding: '0.45rem 1rem',
-                fontSize: '0.65rem', fontWeight: 700,
-                color: faucetState === 'done' ? '#6BBF7A' : faucetState === 'cooldown' ? 'rgba(255,255,255,0.35)' : '#F4845F',
-                letterSpacing: '0.1em', textTransform: 'uppercase',
-                cursor: faucetState === 'loading' ? 'wait' : 'pointer', pointerEvents: 'auto',
-                borderColor: faucetState === 'done' ? '#6BBF7A44' : faucetState === 'cooldown' ? 'rgba(255,255,255,0.1)' : 'rgba(244,132,95,0.45)',
-              }}
-            >
-              {faucetState === 'loading' ? 'CLAIMING...' : faucetState === 'done' ? '✓ CLAIMED!' : faucetState === 'cooldown' ? 'ON COOLDOWN' : 'GET mUSDC'}
-            </button>
-          </div>
         </div>
         {[
           { size: 14, bottom: -18, left: '50%', ml: -7 },
