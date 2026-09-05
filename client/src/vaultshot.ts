@@ -275,6 +275,41 @@ async function main() {
     console.log("  Batch reader — Alice:", fmt(aliceBatch));
   }
 
+  section("DRAW — two-phase: requestDraw() -> off-chain publicDecrypt() -> finalizeDraw()");
+  {
+    const isDrawDue = (await prizePool.isDrawDue()) as boolean;
+    if (!isDrawDue) {
+      const nextDrawTime = Number(await prizePool.nextDrawTime());
+      const secondsLeft = nextDrawTime - Math.floor(Date.now() / 1000);
+      console.log(`  Draw window not open yet — ${secondsLeft}s remaining. Re-run this script after that.`);
+    } else {
+      let tx = await prizePool.connect(admin).getFunction("requestDraw")();
+      console.log("  requestDraw tx:", tx.hash);
+      const receipt = await tx.wait();
+
+      const event = receipt.logs
+        .map((log: unknown) => {
+          try {
+            return prizePool.interface.parseLog(log as { topics: string[]; data: string });
+          } catch {
+            return null;
+          }
+        })
+        .find((parsed: { name: string } | null) => parsed?.name === "DrawRequested");
+      const totalHandle = event?.args?.totalHandle as string;
+      console.log("  Encrypted total handle:", totalHandle);
+
+      const { clearValues, abiEncodedClearValues, decryptionProof } = await instance.publicDecrypt([totalHandle]);
+      const totalDeposits = BigInt(clearValues[totalHandle as `0x${string}`] as string | bigint);
+      console.log("  Decrypted total deposits (aggregate only, never individual):", fmt(totalDeposits));
+
+      tx = await prizePool.connect(admin).getFunction("finalizeDraw")(abiEncodedClearValues, decryptionProof);
+      console.log("  finalizeDraw tx:", tx.hash);
+      await tx.wait();
+      console.log("  Draw #", (await prizePool.drawCount()).toString(), "completed.");
+    }
+  }
+
 }
 
 main().catch((err) => {
