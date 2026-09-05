@@ -35,8 +35,37 @@ contract VaultShotBalanceLedger is ZamaEthereumConfig, Ownable {
         emit AuthorizedContractsSet(vault_, prizePool_);
     }
 
+    // -----------------------------------------------------------------
+    // Balance readers — deliberately several named ways to fetch the same encrypted handle, all
+    // decryptable off-chain via the same EIP-712 userDecrypt flow (see client/src/vaultshot.ts).
+    // -----------------------------------------------------------------
+
     function confidentialBalanceOf(address account) external view returns (euint64) {
         return _balances[account];
+    }
+
+    /// @notice Alias of confidentialBalanceOf: pass a wallet address, get back the encrypted
+    /// handle. Decrypt it off-chain with the SDK to see the plaintext value.
+    function seeConfidentialBalance(address account) external view returns (euint64) {
+        return _balances[account];
+    }
+
+    /// @notice Second alias, same handle.
+    function getEncryptedBalance(address account) external view returns (euint64) {
+        return _balances[account];
+    }
+
+    /// @notice Third alias, same handle.
+    function balanceOfEncrypted(address account) external view returns (euint64) {
+        return _balances[account];
+    }
+
+    /// @notice Batch reader — fetch several accounts' encrypted balances in one call.
+    function getEncryptedBalances(address[] calldata accounts) external view returns (euint64[] memory balances) {
+        balances = new euint64[](accounts.length);
+        for (uint256 i = 0; i < accounts.length; i++) {
+            balances[i] = _balances[accounts[i]];
+        }
     }
 
     function depositorsCount() external view returns (uint256) {
