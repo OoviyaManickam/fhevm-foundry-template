@@ -1,0 +1,19 @@
+# Compiler files
+cache/
+out/
+
+# Dependencies
+dependencies/
+client/node_modules/
+
+# Env
+.env
+.env.*
+
+
+# Docs
+docs/book/
+
+# Misc
+.DS_Store
+foundry-pp/
