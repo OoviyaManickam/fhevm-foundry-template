@@ -122,15 +122,15 @@ export function SwapModal({
             cUSDC is the confidential version of mUSDC. Your vault balance will be fully encrypted using <span style={{ color: '#6EB5FF', fontWeight: 600 }}>Zama FHE</span>.
           </div>
         </div>
-        {/* Tail dots — pointing down-left toward figurine head */}
+        {/* Tail dots — descending toward figurine head */}
         {[
-          { size: 12, bottom: -16, left: '18%' },
-          { size: 8,  bottom: -26, left: '12%' },
-          { size: 5,  bottom: -34, left: '7%'  },
+          { size: 14, bottom: -18, left: '50%', ml: -7 },
+          { size: 9,  bottom: -30, left: '55%', ml: -4 },
+          { size: 5,  bottom: -39, left: '60%', ml: -2 },
         ].map((d, i) => (
           <div key={i} style={{
             position: 'absolute',
-            bottom: d.bottom, left: d.left,
+            bottom: d.bottom, left: d.left, marginLeft: d.ml,
             width: d.size, height: d.size, borderRadius: '50%',
             background: 'rgba(25,25,38,0.97)',
             border: '1.5px solid rgba(255,255,255,0.15)',
