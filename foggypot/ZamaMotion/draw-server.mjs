@@ -12,13 +12,13 @@
 
 import http from 'node:http'
 import { readFileSync, existsSync } from 'node:fs'
+
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Wallet, JsonRpcProvider } from 'ethers'
 import { createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/node'
 
 // ── load .env manually if present (skipped on Render/cloud where env vars are injected) ──
-import { existsSync } from 'node:fs'
 const __dir = dirname(fileURLToPath(import.meta.url))
 const envPath = resolve(__dir, '.env')
 if (existsSync(envPath)) {
