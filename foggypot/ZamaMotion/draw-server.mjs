@@ -52,7 +52,14 @@ const PRIZEPOOL_ABI = [
   'function isDrawDue() view returns (bool)',
   'function drawCount() view returns (uint256)',
   'function nextDrawTime() view returns (uint256)',
+  'function stage() view returns (uint8)',
 ]
+
+const VAULT_ABI = [
+  'function pendingTotalHandle() view returns (bytes32)',
+]
+
+const VAULT_ADDR = process.env.VITE_VAULT_ADDRESS
 
 // keccak256("DrawRequested(uint256,bytes32)") = 0xaf8a141c...
 const DRAW_REQUESTED_TOPIC = '0xaf8a141c850a91b57c69e863d6345ccff7e1351e4e6af6288609484f40d3112a'
@@ -71,19 +78,34 @@ function parseDrawRequestedEvent(receipt) {
 async function runDraw() {
   const instance = await createInstance({ ...SepoliaConfig, network: RPC_URL })
 
-  // Import Contract at runtime (ESM ethers)
-  const { Contract } = await import('ethers')
+  const { Contract, ZeroHash } = await import('ethers')
   const prizePool = new Contract(PRIZEPOOL_ADDR, PRIZEPOOL_ABI, admin)
+  const vault     = new Contract(VAULT_ADDR, VAULT_ABI, provider)
 
-  // Phase 1: requestDraw
-  console.log('[draw] sending requestDraw()...')
-  const tx1 = await prizePool.requestDraw()
-  const receipt1 = await tx1.wait()
-  console.log('[draw] requestDraw mined:', receipt1.hash)
+  // Check if we're already in TotalRequested (stuck from a previous requestDraw)
+  const currentStage = Number(await prizePool.stage())
+  // 0 = Idle, 1 = TotalRequested
+  let totalHandle
+  let requestDrawHash = null
 
-  const totalHandle = parseDrawRequestedEvent(receipt1)
-  if (!totalHandle) throw new Error('DrawRequested event not found in receipt — check topic hash')
-  console.log('[draw] totalHandle:', totalHandle)
+  if (currentStage === 1) {
+    // Already requested — grab the pending handle from Vault and skip to publicDecrypt
+    console.log('[draw] stage=TotalRequested — skipping requestDraw, resuming publicDecrypt')
+    totalHandle = await vault.pendingTotalHandle()
+    if (!totalHandle || totalHandle === ZeroHash) throw new Error('pendingTotalHandle is zero — contract in unexpected state')
+    console.log('[draw] resuming with existing totalHandle:', totalHandle)
+  } else {
+    // Phase 1: requestDraw
+    console.log('[draw] sending requestDraw()...')
+    const tx1 = await prizePool.requestDraw()
+    const receipt1 = await tx1.wait()
+    requestDrawHash = receipt1.hash
+    console.log('[draw] requestDraw mined:', requestDrawHash)
+
+    totalHandle = parseDrawRequestedEvent(receipt1)
+    if (!totalHandle) throw new Error('DrawRequested event not found in receipt — check topic hash')
+    console.log('[draw] totalHandle:', totalHandle)
+  }
 
   // Off-chain: publicDecrypt
   console.log('[draw] running publicDecrypt...')
@@ -103,7 +125,7 @@ async function runDraw() {
     success: true,
     drawId: drawCount,
     totalDeposits: (Number(totalDeposits) / 1e6).toFixed(2),
-    requestDrawHash: receipt1.hash,
+    requestDrawHash,
     finalizeDrawHash: receipt2.hash,
   }
 }
@@ -111,10 +133,11 @@ async function runDraw() {
 async function getStatus() {
   const { Contract } = await import('ethers')
   const prizePool = new Contract(PRIZEPOOL_ADDR, PRIZEPOOL_ABI, provider)
-  const [isDrawDue, drawCount, nextDrawTime] = await Promise.all([
+  const [isDrawDue, drawCount, nextDrawTime, stage] = await Promise.all([
     prizePool.isDrawDue(),
     prizePool.drawCount(),
     prizePool.nextDrawTime(),
+    prizePool.stage(),
   ])
   const nowSec = Math.floor(Date.now() / 1000)
   const secondsLeft = Math.max(0, Number(nextDrawTime) - nowSec)
@@ -123,6 +146,7 @@ async function getStatus() {
     drawCount: Number(drawCount),
     nextDrawTime: Number(nextDrawTime),
     secondsLeft,
+    stage: Number(stage), // 0=Idle, 1=TotalRequested (awaiting finalizeDraw)
   }
 }
 
@@ -152,9 +176,9 @@ const server = http.createServer(async (req, res) => {
         return
       }
 
-      // Quick pre-check: is draw due?
+      // Quick pre-check: is draw due OR is a request already pending (stage=1)?
       const status = await getStatus()
-      if (!status.isDrawDue) {
+      if (!status.isDrawDue && status.stage !== 1) {
         res.writeHead(400)
         res.end(JSON.stringify({ error: `Draw not due yet — ${status.secondsLeft}s remaining`, secondsLeft: status.secondsLeft }))
         return

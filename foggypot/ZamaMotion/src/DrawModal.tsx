@@ -3,13 +3,14 @@ import { X } from 'lucide-react'
 
 const EASE   = 'cubic-bezier(0.4,0,0.2,1)'
 const GOLD   = '#FFD700'
-const SERVER = 'http://localhost:3001'
+const SERVER = import.meta.env.VITE_DRAW_SERVER_URL ?? 'http://localhost:3001'
 
 type DrawStatus = {
   isDrawDue: boolean
   drawCount: number
   nextDrawTime: number
   secondsLeft: number
+  stage: number // 0=Idle, 1=TotalRequested (awaiting finalizeDraw)
 }
 
 type DrawResult = {
@@ -77,6 +78,7 @@ export function DrawModal({ onClose }: { onClose: () => void }) {
   }
 
   const isDue = countdown === 0
+  const isResume = status?.stage === 1 // stuck in TotalRequested — skip requestDraw, go straight to finalizeDraw
 
   return (
     <div
@@ -183,9 +185,9 @@ export function DrawModal({ onClose }: { onClose: () => void }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1.25rem' }}>
               <InfoBox label="Draw #" value={String(status.drawCount + 1)} color={GOLD} />
               <InfoBox
-                label={isDue ? 'Status' : 'Next draw in'}
-                value={isDue ? 'READY' : fmt(countdown)}
-                color={isDue ? '#6BBF7A' : 'rgba(255,255,255,0.5)'}
+                label={isResume ? 'Status' : isDue ? 'Status' : 'Next draw in'}
+                value={isResume ? 'RESUME' : isDue ? 'READY' : fmt(countdown)}
+                color={isResume ? '#6EB5FF' : isDue ? '#6BBF7A' : 'rgba(255,255,255,0.5)'}
               />
             </div>
 
@@ -210,6 +212,20 @@ export function DrawModal({ onClose }: { onClose: () => void }) {
                   Two on-chain txs + FHE publicDecrypt — takes ~30s
                 </div>
               </div>
+            ) : isResume ? (
+              <button
+                onClick={handleDraw}
+                style={{
+                  width: '100%', padding: '0.9rem',
+                  background: `linear-gradient(135deg, #6EB5FF, #4C9EE8)`,
+                  border: 'none', borderRadius: 50,
+                  color: '#0A0A0F', fontSize: '0.8rem', fontWeight: 700,
+                  letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer',
+                  transition: `opacity 200ms ${EASE}`,
+                }}
+              >
+                🔄 RESUME DRAW (finalize)
+              </button>
             ) : isDue ? (
               <button
                 onClick={handleDraw}
