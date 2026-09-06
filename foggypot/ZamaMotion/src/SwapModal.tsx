@@ -92,7 +92,7 @@ export function SwapModal({
         data: '0xde5f72fd',
         gas: '0x186a0',
       })
-      await waitForReceipt(eth, txHash)
+      await waitForReceipt(eth, txHash!)
       setFaucetState('done')
       await refreshBalance()
     } catch (e: any) {

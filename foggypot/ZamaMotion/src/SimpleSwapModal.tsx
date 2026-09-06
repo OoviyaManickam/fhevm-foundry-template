@@ -29,7 +29,7 @@ async function hasCusdBalance(wallet: string): Promise<boolean> {
   }
 }
 
-async function sendTx(eth: any, params: Record<string, string>): Promise<string> {
+async function sendTx(eth: any, params: Record<string, string>): Promise<string | null> {
   const nonceBefore = parseInt(
     await eth.request({ method: 'eth_getTransactionCount', params: [params.from, 'latest'] }), 16
   )

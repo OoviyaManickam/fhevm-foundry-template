@@ -106,7 +106,7 @@ export default function ProfilePage() {
       // signTypedData splits domain/types/message — matches vaultshot.ts client exactly
       const signature = await signer.signTypedData(
         eip712.domain,
-        { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
+        { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification as any },
         eip712.message,
       )
 
