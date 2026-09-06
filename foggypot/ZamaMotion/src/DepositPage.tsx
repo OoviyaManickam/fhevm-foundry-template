@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BrowserProvider, Contract, formatUnits } from 'ethers'
+import { BrowserProvider, Contract, formatUnits, getAddress } from 'ethers'
 import { ArrowLeft, Search, TrendingUp, Users, Trophy, Zap, ChevronRight, Star, X, Lock } from 'lucide-react'
-import { ADDRESSES, USDC_ABI, VAULT_ABI } from './contracts'
+import { createInstance, initSDK, SepoliaConfig } from '@zama-fhe/relayer-sdk/web'
+import { ADDRESSES, VAULT_ABI } from './contracts'
 import { SwapModal } from './SwapModal'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
@@ -276,18 +277,9 @@ async function sendTx(eth: any, params: Record<string, string>): Promise<string 
 
 function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultType; wallet: string | null; onClose: () => void; onDeposited: () => void }) {
   const [amount, setAmount] = useState('')
-  const [step, setStep] = useState<'input' | 'approving' | 'depositing' | 'done'>('input')
+  const [step, setStep] = useState<'input' | 'operator' | 'encrypting' | 'depositing' | 'done' | 'error'>('input')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [bubbleVisible, setBubbleVisible] = useState(false)
-  const [_tokenBalance, setTokenBalance] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!wallet) return
-    const provider = new BrowserProvider((window as any).ethereum)
-    const token = new Contract(ADDRESSES.usdc, USDC_ABI, provider)
-    token.balanceOf(wallet).then((bal: bigint) => {
-      setTokenBalance(formatUnits(bal, 6))
-    }).catch(() => {})
-  }, [wallet])
 
   useEffect(() => {
     const t = setTimeout(() => setBubbleVisible(true), 400)
@@ -305,47 +297,63 @@ function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultTyp
     const rawAmount = BigInt(Math.floor(Number(amount) * 1_000_000))
     const eth = (window as any).ethereum
 
-    // Build calldata manually — avoids touching BrowserProvider/getSigner which trigger
-    // MetaMask's 4100 session bug when called after a popup close
-    const approveData =
-      '0x095ea7b3' +
-      ADDRESSES.vault.slice(2).toLowerCase().padStart(64, '0') +
-      rawAmount.toString(16).padStart(64, '0')
-
-    // deposit(uint64) selector = keccak256("deposit(uint64)")[0:4] = 0x13765838
-    const depositData =
-      '0x13765838' +
-      rawAmount.toString(16).padStart(64, '0')
-
     try {
-      // Check existing allowance via Alchemy RPC (MetaMask eth_call returns 0x under COEP)
-      const allowanceData = '0xdd62ed3e' +
-        address.slice(2).toLowerCase().padStart(64, '0') +
-        ADDRESSES.vault.slice(2).toLowerCase().padStart(64, '0')
-      const allowanceRes = await fetch(import.meta.env.VITE_SEPOLIA_RPC_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: ADDRESSES.usdc, data: allowanceData }, 'latest'] }),
+      // Step 1: setOperator(vault, type(uint48).max) on cUSD so vault can pull our balance
+      // selector: keccak256("setOperator(address,uint48)")[0:4] = 0xd4febb96
+      setStep('operator')
+      const MAX_UINT48 = 281_474_976_710_655n
+      const setOperatorData =
+        '0xd4febb96' +
+        ADDRESSES.vault.slice(2).toLowerCase().padStart(64, '0') +
+        MAX_UINT48.toString(16).padStart(64, '0')
+      const operatorTxHash = await sendTx(eth, { from: address, to: ADDRESSES.cusd, data: setOperatorData, gas: '0x186a0' })
+      if (operatorTxHash) await waitForReceipt(eth, operatorTxHash)
+
+      // Step 2: client-side encryption via Zama SDK
+      setStep('encrypting')
+      await initSDK()
+      const instance = await createInstance({
+        ...SepoliaConfig,
+        network: import.meta.env.VITE_SEPOLIA_RPC_URL,
       })
-      const allowanceJson = await allowanceRes.json()
-      const currentAllowance = BigInt(allowanceJson.result ?? '0x0')
+      const encInput = instance.createEncryptedInput(getAddress(ADDRESSES.vault), getAddress(address))
+      encInput.add64(rawAmount)
+      const { handles, inputProof } = await encInput.encrypt()
+      // handles[0] is Uint8Array(32), inputProof is Uint8Array — encode as deposit(bytes32, bytes)
+      const handle = handles[0] as Uint8Array
 
-      if (currentAllowance < rawAmount) {
-        setStep('approving')
-        const approveTxHash = await sendTx(eth, { from: address, to: ADDRESSES.usdc, data: approveData, gas: '0x186a0' })
-        if (approveTxHash) await waitForReceipt(eth, approveTxHash)
-      }
-
+      // Step 3: deposit(bytes32 encryptedAmount, bytes inputProof)
+      // selector: keccak256("deposit(bytes32,bytes)")[0:4] = 0xe29973fc
       setStep('depositing')
+      const toHex = (u: Uint8Array) => u.reduce((s, b) => s + b.toString(16).padStart(2, '0'), '')
+
+      // ABI-encode deposit(bytes32, bytes):
+      //   [0x00] selector (4 bytes)
+      //   [0x04] handle   (32 bytes, left-padded — but it already is 32 bytes)
+      //   [0x24] offset of bytes param = 0x40 (64)
+      //   [0x44] length of inputProof
+      //   [0x64] inputProof data (padded to 32-byte boundary)
+      const proofHex = toHex(inputProof)
+      const proofLen = inputProof.length
+      const proofPadded = proofHex.padEnd(Math.ceil(proofLen / 32) * 64, '0')
+      const depositData =
+        '0xe29973fc' +
+        toHex(handle) +
+        '0000000000000000000000000000000000000000000000000000000000000040' +
+        proofLen.toString(16).padStart(64, '0') +
+        proofPadded
+
       const depositTxHash = await sendTx(eth, { from: address, to: ADDRESSES.vault, data: depositData, gas: '0x7a120' })
       if (depositTxHash) await waitForReceipt(eth, depositTxHash)
+      else await new Promise(r => setTimeout(r, 4000))
 
       setStep('done')
       onDeposited()
     } catch (e: any) {
       const msg = e?.message ?? e?.reason ?? e?.info?.error?.message ?? JSON.stringify(e)
       console.error('deposit error:', msg, e)
-      setStep('input')
+      setErrorMsg(msg)
+      setStep('error')
     }
   }
 
@@ -498,6 +506,22 @@ function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultTyp
               DONE
             </button>
           </div>
+        ) : step === 'error' ? (
+          <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⚠️</div>
+            <div style={{
+              fontSize: '0.7rem', color: '#F4845F',
+              background: 'rgba(244,132,95,0.08)', border: '1px solid rgba(244,132,95,0.25)',
+              borderRadius: 8, padding: '0.75rem', marginBottom: '1.25rem',
+              wordBreak: 'break-word', textAlign: 'left', lineHeight: 1.5,
+            }}>{errorMsg}</div>
+            <button onClick={() => { setStep('input'); setErrorMsg(null) }} style={{
+              width: '100%', padding: '0.85rem',
+              background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 50, color: 'white', fontSize: '0.78rem', fontWeight: 700,
+              letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer',
+            }}>TRY AGAIN</button>
+          </div>
         ) : (
           <>
             <div style={{ marginBottom: '1.25rem' }}>
@@ -575,10 +599,12 @@ function DepositModal({ vault, wallet, onClose, onDeposited }: { vault: VaultTyp
             ) : (
               <div style={{ textAlign: 'center', padding: '0.6rem 0' }}>
                 <div style={{ fontSize: '0.75rem', color: vault.bg, fontWeight: 600, letterSpacing: '0.08em' }}>
-                  {step === 'approving' ? '⏳ Approving token spend...' : '⏳ Depositing into vault...'}
+                  {step === 'operator'    ? '⏳ Authorising vault (setOperator)...' :
+                   step === 'encrypting' ? '🔒 Encrypting amount (Zama SDK)...' :
+                                           '⏳ Depositing into vault...'}
                 </div>
                 <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
-                  Confirm in MetaMask
+                  Confirm in MetaMask if prompted
                 </div>
               </div>
             )}

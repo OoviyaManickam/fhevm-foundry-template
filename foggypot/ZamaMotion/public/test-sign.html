@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<body>
+<button id="btn">Sign</button>
+<pre id="out"></pre>
+<script>
+document.getElementById('btn').onclick = async () => {
+  const eth = window.ethereum;
+  const out = document.getElementById('out');
+  try {
+    const accounts = await eth.request({ method: 'eth_requestAccounts' });
+    out.textContent = 'accounts: ' + accounts[0];
+    
+    // Try direct sign
+    const sig = await eth.request({
+      method: 'personal_sign',
+      params: ['0x68656c6c6f', accounts[0]]
+    });
+    out.textContent += '\nsig: ' + sig;
+  } catch(e) {
+    out.textContent += '\nerror: ' + e.code + ' ' + e.message;
+  }
+}
+</script>
+</body>
+</html>

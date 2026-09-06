@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { JsonRpcProvider, Contract, formatUnits } from 'ethers'
+import { BrowserProvider, JsonRpcProvider, Contract, formatUnits, getAddress } from 'ethers'
 import { ArrowLeft, Shield, Clock, Trophy, Activity, Eye, EyeOff, Wallet, ChevronRight, Lock, Unlock } from 'lucide-react'
 import { initSDK, createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/web'
 import { ADDRESSES, USDC_ABI, LEDGER_ABI } from './contracts'
 import { WithdrawModal } from './WithdrawModal'
 import { SimpleSwapModal } from './SimpleSwapModal'
+import { DrawModal } from './DrawModal'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
 const RPC  = import.meta.env.VITE_SEPOLIA_RPC_URL as string
@@ -69,24 +70,62 @@ export default function ProfilePage() {
   const [crackResult, setCrackResult]   = useState<{ amount: string; net: number } | null>(null)
   const [crackError, setCrackError]     = useState<string | null>(null)
   const [swapOpen, setSwapOpen]         = useState(false)
+  const [drawOpen, setDrawOpen]         = useState(false)
 
   const handleCrack = useCallback(async () => {
     if (!vaultState?.encryptedHandle || vaultState.encryptedHandle === ZERO) return
+    if (!wallet) return
     setCrackStep('cracking')
     setCrackResult(null)
     setCrackError(null)
     try {
+      // Use BrowserProvider + signer.signTypedData() — matches the README pattern exactly
+      const provider = new BrowserProvider((window as any).ethereum)
+      const signer = await provider.getSigner()
+      const checksumWallet = getAddress(await signer.getAddress())
+
       await initSDK()
       const instance = await createInstance({
         ...SepoliaConfig,
         network: import.meta.env.VITE_SEPOLIA_RPC_URL,
       })
+
+      const { publicKey, privateKey } = instance.generateKeypair()
+      const extraData = await instance.getExtraData()
+      const startTimestamp = Math.floor(Date.now() / 1000)
+      const durationDays = 1
+
+      const eip712 = instance.createEIP712(
+        publicKey,
+        [ADDRESSES.ledger],
+        startTimestamp,
+        durationDays,
+        extraData,
+      )
+
+      // signTypedData splits domain/types/message — matches vaultshot.ts client exactly
+      const signature = await signer.signTypedData(
+        eip712.domain,
+        { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
+        eip712.message,
+      )
+
+      const result = await instance.userDecrypt(
+        [{ handle: vaultState.encryptedHandle as `0x${string}`, contractAddress: ADDRESSES.ledger }],
+        privateKey,
+        publicKey,
+        signature.replace('0x', ''),  // SDK expects no 0x prefix
+        [ADDRESSES.ledger],
+        checksumWallet,
+        startTimestamp,
+        durationDays,
+        extraData,
+      )
+
       const handle = vaultState.encryptedHandle as `0x${string}`
-      const { clearValues } = await instance.publicDecrypt([handle])
-      const raw = BigInt(clearValues[handle] as string | bigint)
+      const raw = BigInt(result[handle] as string | bigint)
       const amount = formatUnits(raw, 6)
 
-      // total deposited = sum of deposit txs
       const deposited = txHistory
         .filter(t => t.type === 'deposit')
         .reduce((acc, t) => acc + Number(t.amount), 0)
@@ -94,10 +133,11 @@ export default function ProfilePage() {
       setCrackResult({ amount, net: Number(amount) - deposited })
       setCrackStep('revealed')
     } catch (e: any) {
-      setCrackError(e?.message ?? 'Decryption failed')
+      console.error('crack error:', e?.code, e?.message, e)
+      setCrackError(`[${e?.code}] ${e?.message ?? 'Decryption failed'}`)
       setCrackStep('error')
     }
-  }, [vaultState, txHistory])
+  }, [vaultState, txHistory, wallet])
 
   // connect wallet
   const connectWallet = useCallback(async () => {
@@ -154,16 +194,16 @@ export default function ProfilePage() {
 
       const [depositsRaw, withdrawsRaw, faucetsRaw, prizeRaw] = await Promise.all([
         // deposits: Transfer from wallet → vault (token contract)
-        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 7000000, toBlock: 'latest',
+        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 11600000, toBlock: 'latest',
           topics: [transferTopic, addrPadded, vaultPadded] }),
         // withdraws: Transfer from vault → wallet (token contract)
-        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 7000000, toBlock: 'latest',
+        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 11600000, toBlock: 'latest',
           topics: [transferTopic, vaultPadded, addrPadded] }),
         // faucet mints: Transfer from 0x0 → wallet
-        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 7000000, toBlock: 'latest',
+        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 11600000, toBlock: 'latest',
           topics: [transferTopic, '0x0000000000000000000000000000000000000000000000000000000000000000', addrPadded] }),
         // prize payouts: Transfer from prizePool → wallet
-        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 7000000, toBlock: 'latest',
+        provider.getLogs({ address: ADDRESSES.usdc, fromBlock: 11600000, toBlock: 'latest',
           topics: [transferTopic, '0x000000000000000000000000' + ADDRESSES.prizePool.slice(2).toLowerCase(), addrPadded] }),
       ])
 
@@ -187,7 +227,7 @@ export default function ProfilePage() {
       // prize wins — DrawExecuted topic for draw ID correlation (best-effort)
       const DRAW_EXECUTED = '0xa765c1807b033c566a5ab6f44ecc37bbdd9c8b5c02a7ee01a2dac2e11f265aaf'
       const drawLogs = await provider.getLogs({
-        address: ADDRESSES.prizePool, fromBlock: 7000000, toBlock: 'latest',
+        address: ADDRESSES.prizePool, fromBlock: 11600000, toBlock: 'latest',
         topics: [DRAW_EXECUTED],
       }).catch(() => [])
 
@@ -333,16 +373,28 @@ export default function ProfilePage() {
                 <div style={{ fontFamily: 'monospace', fontSize: '1rem', color: 'white', letterSpacing: '0.04em' }}>
                   {wallet}
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={() => setSwapOpen(true)} style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   background: 'linear-gradient(135deg, rgba(232,130,180,0.15), rgba(110,181,255,0.1))',
                   border: '1.5px solid rgba(232,130,180,0.4)',
                   borderRadius: 50, padding: '0.38rem 0.9rem',
                   color: '#E882B4', fontSize: '0.68rem', fontWeight: 700,
-                  letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer', flexShrink: 0, marginLeft: 16,
+                  letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer', flexShrink: 0,
                 }}>
                   <span style={{ fontSize: '0.85rem' }}>⇄</span> SWAP
                 </button>
+                <button onClick={() => setDrawOpen(true)} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,165,0,0.08))',
+                  border: '1.5px solid rgba(255,200,0,0.4)',
+                  borderRadius: 50, padding: '0.38rem 0.9rem',
+                  color: '#FFD700', fontSize: '0.68rem', fontWeight: 700,
+                  letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer', flexShrink: 0,
+                }}>
+                  🎲 DRAW
+                </button>
+                </div>
               </div>
             </div>
 
@@ -475,10 +527,11 @@ export default function ProfilePage() {
                       </div>
                     </div>
 
-                    {/* Balance + handles */}
+                    {/* Balance + crack side by side */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                       {/* Encrypted balance */}
                       <div style={{
+                        flex: 1,
                         background: 'rgba(255,255,255,0.04)', borderRadius: 12,
                         padding: '1rem 1.1rem', border: '1px solid rgba(255,255,255,0.07)',
                       }}>
@@ -499,20 +552,19 @@ export default function ProfilePage() {
                           </div>
                         )}
                       </div>
-                    </div>
 
-                    {/* ── CRACK THE VAULT ── */}
-                    <div style={{ marginBottom: '1rem' }}>
+                      {/* ── CRACK THE VAULT ── */}
+                      <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}>
                       {crackStep === 'idle' && (
                         <button
                           onClick={handleCrack}
                           style={{
-                            width: '100%', padding: '0.9rem',
+                            width: '100%', height: '100%',
                             background: 'linear-gradient(135deg, #7B5EA7, #4C3F8A)',
                             border: '1.5px solid rgba(155,120,255,0.45)',
-                            borderRadius: 50, color: 'white',
-                            fontSize: '0.82rem', fontWeight: 700,
-                            letterSpacing: '0.14em', textTransform: 'uppercase',
+                            borderRadius: 12, color: 'white',
+                            fontSize: '0.75rem', fontWeight: 700,
+                            letterSpacing: '0.12em', textTransform: 'uppercase',
                             cursor: 'pointer', display: 'flex', alignItems: 'center',
                             justifyContent: 'center', gap: 8,
                             boxShadow: '0 0 24px rgba(123,94,167,0.3)',
@@ -525,18 +577,18 @@ export default function ProfilePage() {
                         </button>
                       )}
 
-                      {crackStep === 'cracking' && (
+                      {(crackStep === 'cracking') && (
                         <div style={{
-                          width: '100%', padding: '0.9rem',
+                          padding: '0.9rem 1.2rem',
                           background: 'rgba(123,94,167,0.1)',
                           border: '1.5px solid rgba(155,120,255,0.3)',
-                          borderRadius: 50, textAlign: 'center',
+                          borderRadius: 50, textAlign: 'center', whiteSpace: 'nowrap',
                         }}>
                           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#B899FF', letterSpacing: '0.12em', marginBottom: 4 }}>
                             CRACKING...
                           </div>
                           <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.06em' }}>
-                            Zama Relayer decrypting your vault · ~10-20s
+                            ~10-20s
                           </div>
                         </div>
                       )}
@@ -547,30 +599,30 @@ export default function ProfilePage() {
                             ? 'linear-gradient(135deg, rgba(107,191,122,0.1), rgba(255,197,61,0.07))'
                             : 'rgba(123,94,167,0.08)',
                           border: `1.5px solid ${crackResult.net > 0 ? 'rgba(107,191,122,0.4)' : 'rgba(155,120,255,0.35)'}`,
-                          borderRadius: 16, padding: '1.25rem 1.4rem',
-                          display: 'flex', alignItems: 'center', gap: 14,
+                          borderRadius: 16, padding: '1rem 1.1rem',
+                          display: 'flex', alignItems: 'center', gap: 10,
                         }}>
                           <div style={{
-                            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
                             background: crackResult.net > 0 ? 'rgba(107,191,122,0.15)' : 'rgba(123,94,167,0.2)',
                             border: `1.5px solid ${crackResult.net > 0 ? 'rgba(107,191,122,0.4)' : 'rgba(155,120,255,0.3)'}`,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '1.3rem',
+                            fontSize: '1rem',
                           }}>
-                            {crackResult.net > 0 ? '🏆' : <Unlock size={18} color="#B899FF" />}
+                            {crackResult.net > 0 ? '🏆' : <Unlock size={15} color="#B899FF" />}
                           </div>
                           <div style={{ flex: 1 }}>
                             <div style={{
-                              fontFamily: "'Anton', sans-serif", fontSize: '1.4rem',
+                              fontFamily: "'Anton', sans-serif", fontSize: '1.1rem',
                               color: crackResult.net > 0 ? '#6BBF7A' : '#B899FF',
                               letterSpacing: '0.06em', lineHeight: 1,
                             }}>
                               {Number(crackResult.amount).toFixed(2)} mUSDC
                             </div>
-                            <div style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.4)', marginTop: 5 }}>
+                            <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
                               {crackResult.net > 0
-                                ? `+${crackResult.net.toFixed(2)} mUSDC prize included — you won!`
-                                : 'Your current encrypted vault balance'}
+                                ? `+${crackResult.net.toFixed(2)} prize!`
+                                : 'vault balance'}
                             </div>
                           </div>
                           <button
@@ -588,8 +640,8 @@ export default function ProfilePage() {
                       {crackStep === 'error' && (
                         <div style={{
                           background: 'rgba(244,132,95,0.07)', border: '1.5px solid rgba(244,132,95,0.3)',
-                          borderRadius: 12, padding: '0.85rem 1.1rem',
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                          borderRadius: 12, padding: '0.85rem 1rem',
+                          display: 'flex', alignItems: 'center', gap: 10,
                         }}>
                           <div style={{ fontSize: '0.67rem', color: '#F4845F', wordBreak: 'break-word', flex: 1 }}>
                             {crackError}
@@ -605,6 +657,7 @@ export default function ProfilePage() {
                           >TRY AGAIN</button>
                         </div>
                       )}
+                      </div>
                     </div>
 
                     {/* FHE info banner */}
@@ -720,6 +773,9 @@ export default function ProfilePage() {
     )}
     {swapOpen && (
       <SimpleSwapModal wallet={wallet} onClose={() => setSwapOpen(false)} />
+    )}
+    {drawOpen && (
+      <DrawModal onClose={() => { setDrawOpen(false); if (wallet) loadData(wallet) }} />
     )}
     </>
   )

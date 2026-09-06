@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { X, ArrowDown } from 'lucide-react'
-import { BrowserProvider, Contract, formatUnits } from 'ethers'
+import { BrowserProvider, Contract, formatUnits, Interface } from 'ethers'
 import { ADDRESSES, USDC_ABI } from './contracts'
 
 const EASE = 'cubic-bezier(0.4,0,0.2,1)'
 const ACCENT = '#E882B4'
 
-type Step = 'input' | 'swapping' | 'done' | 'error'
+type Step = 'input' | 'approving' | 'swapping' | 'done' | 'error'
 
 async function waitForReceipt(eth: any, txHash: string): Promise<void> {
   for (;;) {
@@ -27,12 +27,28 @@ async function sendTx(eth: any, params: Record<string, string>): Promise<string 
     return await eth.request({ method: 'eth_sendTransaction', params: [params] })
   } catch (e: any) {
     if (e?.code === 4100) {
+      // MetaMask threw 4100 but may have submitted the tx anyway — poll until confirmed nonce increments
       for (let i = 0; i < 120; i++) {
         await new Promise(r => setTimeout(r, 2000))
         const nonceNow = parseInt(
           await eth.request({ method: 'eth_getTransactionCount', params: [params.from, 'latest'] }), 16
         )
-        if (nonceNow > nonceBefore) return null
+        if (nonceNow > nonceBefore) {
+          // Tx landed — scan recent blocks for the hash
+          for (let back = 0; back < 8; back++) {
+            const blockTag = '0x' + (parseInt(
+              await eth.request({ method: 'eth_blockNumber' }), 16
+            ) - back).toString(16)
+            const block = await eth.request({ method: 'eth_getBlockByNumber', params: [blockTag, true] })
+            const tx = block?.transactions?.find(
+              (t: any) => t.from?.toLowerCase() === params.from.toLowerCase() && parseInt(t.nonce, 16) === nonceBefore
+            )
+            if (tx?.hash) return tx.hash
+          }
+          // Hash not found but nonce incremented — tx is on-chain, return null so caller
+          // skips waitForReceipt and re-verifies state instead of throwing a false error.
+          return null
+        }
       }
       throw new Error('timed out waiting for nonce increment after 4100')
     }
@@ -54,14 +70,16 @@ export function SwapModal({
   const [faucetState, setFaucetState] = useState<'idle' | 'loading' | 'done' | 'cooldown'>('idle')
   const [tokenBalance, setTokenBalance] = useState<string | null>(null)
 
-  useEffect(() => {
+  const refreshBalance = async () => {
     if (!wallet) return
     const provider = new BrowserProvider((window as any).ethereum)
     const token = new Contract(ADDRESSES.usdc, USDC_ABI, provider)
     token.balanceOf(wallet).then((bal: bigint) => {
       setTokenBalance(formatUnits(bal, 6))
     }).catch(() => {})
-  }, [wallet, faucetState])
+  }
+
+  useEffect(() => { refreshBalance() }, [wallet, faucetState])
 
   const handleFaucet = async () => {
     if (!wallet || faucetState === 'loading') return
@@ -71,11 +89,12 @@ export function SwapModal({
       const txHash = await sendTx(eth, {
         from: wallet,
         to: ADDRESSES.usdc,
-        data: '0x7b0472f0',
+        data: '0xde5f72fd',
         gas: '0x186a0',
       })
-      if (txHash) await waitForReceipt(eth, txHash)
+      await waitForReceipt(eth, txHash)
       setFaucetState('done')
+      await refreshBalance()
     } catch (e: any) {
       const msg = e?.message ?? e?.reason ?? e?.info?.error?.message ?? JSON.stringify(e)
       if (msg.toLowerCase().includes('cooldown')) {
@@ -98,12 +117,47 @@ export function SwapModal({
 
   const handleSwap = async () => {
     if (!amount || Number(amount) <= 0 || !wallet) return
-    setStep('swapping')
+    setStep('approving')
     setErrorMsg(null)
+    const eth = (window as any).ethereum
     try {
-      // Contract not yet deployed — wired later
-      await new Promise(r => setTimeout(r, 1000))
-      throw new Error('Swap contract not yet deployed — coming soon!')
+      const rawAmount = BigInt(Math.round(Number(amount) * 1e6))
+
+      // Check current on-chain allowance first
+      const allowanceData = '0xdd62ed3e' +
+        wallet.slice(2).toLowerCase().padStart(64, '0') +
+        ADDRESSES.cusd.slice(2).toLowerCase().padStart(64, '0')
+      const allowanceRes = await fetch(import.meta.env.VITE_SEPOLIA_RPC_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: ADDRESSES.usdc, data: allowanceData }, 'latest'] }),
+      })
+      const currentAllowance = BigInt((await allowanceRes.json()).result ?? '0x0')
+
+      if (currentAllowance < rawAmount) {
+        // Step 1: approve mUSDC → cUSD contract
+        const approveIface = new Interface(['function approve(address spender, uint256 amount) returns (bool)'])
+        const approveData = approveIface.encodeFunctionData('approve', [ADDRESSES.cusd, rawAmount])
+        const approveTx = await sendTx(eth, { from: wallet, to: ADDRESSES.usdc, data: approveData, gas: '0x186a0' })
+        if (approveTx) await waitForReceipt(eth, approveTx)
+
+        // Re-verify allowance landed correctly before wrapping
+        const verifyRes = await fetch(import.meta.env.VITE_SEPOLIA_RPC_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'eth_call', params: [{ to: ADDRESSES.usdc, data: allowanceData }, 'latest'] }),
+        })
+        const verifiedAllowance = BigInt((await verifyRes.json()).result ?? '0x0')
+        if (verifiedAllowance < rawAmount) throw new Error('Approval did not land — please try again')
+      }
+
+      // Step 2: wrap(wallet, amount) — mUSDC in, cUSD out
+      setStep('swapping')
+      const wrapIface = new Interface(['function wrap(address to, uint256 amount)'])
+      const wrapData = wrapIface.encodeFunctionData('wrap', [wallet, rawAmount])
+      const wrapTx = await sendTx(eth, { from: wallet, to: ADDRESSES.cusd, data: wrapData, gas: '0x493E0' })
+      if (wrapTx) await waitForReceipt(eth, wrapTx)
+      else await new Promise(r => setTimeout(r, 4000)) // nonce incremented — tx is on-chain
+
+      setStep('done')
     } catch (e: any) {
       setErrorMsg(e?.message ?? 'Swap failed')
       setStep('error')
@@ -319,10 +373,10 @@ export function SwapModal({
                 letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer',
               }}>TRY AGAIN</button>
             </div>
-          ) : step === 'swapping' ? (
+          ) : step === 'approving' || step === 'swapping' ? (
             <div style={{ textAlign: 'center', padding: '1rem 0' }}>
               <div style={{ fontSize: '0.78rem', color: ACCENT, fontWeight: 600, letterSpacing: '0.06em', marginBottom: 8 }}>
-                ⏳ Swapping tokens...
+                {step === 'approving' ? '⏳ Approving mUSDC...' : '⏳ Wrapping to cUSD...'}
               </div>
               <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
                 Confirm in MetaMask if prompted
