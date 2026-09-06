@@ -11,24 +11,27 @@
  */
 
 import http from 'node:http'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Wallet, JsonRpcProvider } from 'ethers'
 import { createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/node'
 
-// ── load .env manually (no dotenv dep needed) ────────────────────────────────
+// ── load .env manually if present (skipped on Render/cloud where env vars are injected) ──
+import { existsSync } from 'node:fs'
 const __dir = dirname(fileURLToPath(import.meta.url))
 const envPath = resolve(__dir, '.env')
-const envLines = readFileSync(envPath, 'utf8').split('\n')
-for (const line of envLines) {
-  const trimmed = line.trim()
-  if (!trimmed || trimmed.startsWith('#')) continue
-  const eq = trimmed.indexOf('=')
-  if (eq === -1) continue
-  const key = trimmed.slice(0, eq).trim()
-  const val = trimmed.slice(eq + 1).trim()
-  if (!process.env[key]) process.env[key] = val
+if (existsSync(envPath)) {
+  const envLines = readFileSync(envPath, 'utf8').split('\n')
+  for (const line of envLines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq === -1) continue
+    const key = trimmed.slice(0, eq).trim()
+    const val = trimmed.slice(eq + 1).trim()
+    if (!process.env[key]) process.env[key] = val
+  }
 }
 
 const RPC_URL        = process.env.VITE_SEPOLIA_RPC_URL
