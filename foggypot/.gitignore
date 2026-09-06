@@ -19,3 +19,4 @@ docs/book/
 # Misc
 .DS_Store
 foggypot_build_spec.pdf
+node_modules/
