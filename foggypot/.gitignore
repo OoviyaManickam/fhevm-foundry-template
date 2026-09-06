@@ -10,6 +10,8 @@ dependencies/
 .env.*
 !.env.example
 
+.npmrc
+
 
 # Docs
 docs/book/
